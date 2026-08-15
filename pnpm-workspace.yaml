@@ -1,6 +1,7 @@
 packages:
   - "desktop"
   - "web"
+  - "user-web"
   - "admin-web"
 allowBuilds:
   esbuild: true

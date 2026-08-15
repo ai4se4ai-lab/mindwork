@@ -73,18 +73,59 @@ services:
       com.buzz.env: "dev"
     restart: unless-stopped
 
+  # One-shot job that ensures the `keycloak` database exists on the shared
+  # postgres instance before Keycloak starts. Needed because postgres only
+  # runs /docker-entrypoint-initdb.d scripts on a brand-new data volume, and
+  # buzz-postgres-data typically already exists from prior `just setup` runs.
+  keycloak-db-init:
+    image: postgres:17-alpine
+    container_name: buzz-keycloak-db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - buzz-net
+    environment:
+      PGPASSWORD: buzz_dev
+    entrypoint: >
+      /bin/sh -c "
+        psql -h postgres -U buzz -d buzz -tc \"SELECT 1 FROM pg_database WHERE datname = 'keycloak'\" | grep -q 1 ||
+        psql -h postgres -U buzz -d buzz -c \"CREATE DATABASE keycloak\"
+      "
+    labels:
+      com.buzz.service: "keycloak-db-init"
+      com.buzz.env: "dev"
+    restart: "no"
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: buzz-keycloak
     command: start-dev --http-port=8080
     environment:
-      KC_DB: dev-mem
+      # dev-mem is a pure in-memory H2 store: once the JDBC pool drops its
+      # idle connection, the database is destroyed and the next connection
+      # silently gets a fresh, schema-less one. That's what produces the
+      # "Table ... not found (this database is empty)" errors from Keycloak's
+      # own scheduled cleanup tasks (ClearExpiredAdminEvents, etc). Back it
+      # with the shared postgres instance instead, which persists.
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: buzz
+      KC_DB_PASSWORD: buzz_dev
+      # Without this, /health/ready 404s and the healthcheck below always
+      # reports unhealthy — the health endpoint isn't exposed until enabled.
+      KC_HEALTH_ENABLED: "true"
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
       - "127.0.0.1:8180:8080"
     networks:
       - buzz-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak-db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
       interval: 10s
@@ -169,6 +210,51 @@ services:
       com.buzz.env: "dev"
     restart: unless-stopped
 
+  # Vite dev server for user-web (browser build of the desktop client — see
+  # user-web/README.md). Talks to the relay purely over HTTP/WebSocket
+  # (POST /events, /query, /count + NIP-42 auth) — it never touches Postgres
+  # or Redis directly, so no depends_on here. The relay itself still runs
+  # natively (`just relay`), not in Compose.
+  #
+  # No VITE_RELAY_URL here on purpose: that value is baked into the JS bundle
+  # once and shipped to every browser that loads the page, so a fixed value
+  # (e.g. host.docker.internal, which only resolves *inside* this container)
+  # breaks for any real client — the browser talks to the relay directly, not
+  # through this container's network. resolveRelayUrl() in
+  # user-web/src/platform/bootstrap.ts instead derives ws://<page-hostname>:3000
+  # client-side, so it works whether the page was opened via localhost or a
+  # LAN IP. Set VITE_RELAY_URL explicitly only to point at a relay that isn't
+  # on this host.
+  user-web:
+    image: node:24-bookworm-slim
+    container_name: buzz-user-web
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - user-web-node-modules:/workspace/user-web/node_modules
+      - workspace-node-modules:/workspace/node_modules
+    command: >
+      sh -c "
+        corepack enable &&
+        pnpm install --frozen-lockfile --filter buzz-user-web &&
+        pnpm -C user-web exec vite --host 0.0.0.0 --port 5273 --strictPort
+      "
+    ports:
+      # Bound to all interfaces (unlike the infra services above, which are
+      # 127.0.0.1-only) so it's reachable from other devices on the LAN for
+      # testing — e.g. http://<host-LAN-IP>:5273.
+      - "5273:5273"
+    networks:
+      - buzz-net
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+    labels:
+      com.buzz.service: "user-web"
+      com.buzz.env: "dev"
+    restart: unless-stopped
+
 volumes:
   postgres-data:
     name: buzz-postgres-data
@@ -182,6 +268,14 @@ volumes:
     name: buzz-prometheus-data
     labels:
       com.buzz.volume: "prometheus"
+  user-web-node-modules:
+    name: buzz-user-web-node-modules
+    labels:
+      com.buzz.volume: "user-web-node-modules"
+  workspace-node-modules:
+    name: buzz-workspace-node-modules
+    labels:
+      com.buzz.volume: "workspace-node-modules"
 
 networks:
   buzz-net:

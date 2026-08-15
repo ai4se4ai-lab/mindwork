@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "paths": {
+      "@web/*": ["./src/*"],
+      "@/*": ["../desktop/src/*"],
+      "@features-manifest": ["../preview-features.json"],
+      "@tauri-apps/api/core": ["./src/platform/tauri-shim/core.ts"],
+      "@tauri-apps/api/event": ["./src/platform/tauri-shim/event.ts"],
+      "@tauri-apps/api/window": ["./src/platform/tauri-shim/window.ts"],
+      "@tauri-apps/api/webview": ["./src/platform/tauri-shim/webview.ts"],
+      "@tauri-apps/api/app": ["./src/platform/tauri-shim/app.ts"],
+      "@tauri-apps/api/path": ["./src/platform/tauri-shim/path.ts"],
+      "@tauri-apps/api/mocks": ["./src/platform/tauri-shim/mocks.ts"],
+      "@tauri-apps/plugin-opener": ["./src/platform/tauri-shim/plugin-opener.ts"],
+      "@tauri-apps/plugin-notification": ["./src/platform/tauri-shim/plugin-notification.ts"],
+      "@tauri-apps/plugin-process": ["./src/platform/tauri-shim/plugin-process.ts"],
+      "@tauri-apps/plugin-updater": ["./src/platform/tauri-shim/plugin-updater.ts"]
+    },
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

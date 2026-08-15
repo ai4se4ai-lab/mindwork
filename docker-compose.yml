@@ -94,7 +94,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: 1024m
     labels:
       com.buzz.service: "keycloak"
       com.buzz.env: "dev"

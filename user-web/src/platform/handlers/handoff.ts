@@ -46,6 +46,14 @@ const PREFIX_HANDOFFS: Array<[string, HandoffSpec]> = [
     "managed_agent",
     { capability: "localAgents", feature: "Local agents", link: agentLink },
   ],
+  [
+    "builderlab",
+    {
+      capability: "hostedCommunities",
+      feature: "Hosted communities",
+      link: openApp,
+    },
+  ],
 ];
 
 const EXACT_HANDOFFS: Record<string, HandoffSpec> = {
@@ -159,5 +167,10 @@ export function findHandoff(cmd: string): HandoffSpec | null {
 export function assertNoHandoffRequired(cmd: string, args: InvokeArgs): void {
   const spec = findHandoff(cmd);
   if (!spec) return;
-  throw new HandoffRequiredError(cmd, spec.link(args), spec.capability);
+  throw new HandoffRequiredError(
+    cmd,
+    spec.link(args),
+    spec.capability,
+    spec.feature,
+  );
 }

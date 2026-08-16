@@ -69,6 +69,16 @@ test("model discovery status stays quiet for missing Databricks defaults", () =>
   assert.equal(status, null);
 });
 
+test("model discovery status prompts for the Ollama host when it is missing", () => {
+  const status = formatModelDiscoveryErrorStatus(
+    new Error("config: OLLAMA_HOST required"),
+    "ollama",
+  );
+
+  assert.equal(status?.tone, "muted");
+  assert.match(status?.message ?? "", /Enter the Ollama host/);
+});
+
 test("Databricks sign-in-required is a muted note pointing at the picker and CLI", () => {
   const status = formatModelDiscoveryErrorStatus(
     new Error(

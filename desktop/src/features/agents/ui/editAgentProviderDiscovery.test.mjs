@@ -1318,6 +1318,11 @@ test("requiredCredentialEnvKeys: buzz-agent + databricks_v2 → DATABRICKS_HOST 
   assert.deepEqual(keys, ["DATABRICKS_HOST"]);
 });
 
+test("requiredCredentialEnvKeys: buzz-agent + ollama → OLLAMA_HOST only (no API key)", () => {
+  const keys = requiredCredentialEnvKeys("buzz-agent", "ollama");
+  assert.deepEqual(keys, ["OLLAMA_HOST"]);
+});
+
 test("requiredCredentialEnvKeys: goose + anthropic → ANTHROPIC_API_KEY", () => {
   const keys = requiredCredentialEnvKeys("goose", "anthropic");
   assert.deepEqual(keys, ["ANTHROPIC_API_KEY"]);

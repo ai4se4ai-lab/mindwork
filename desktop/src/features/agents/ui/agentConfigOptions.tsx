@@ -46,6 +46,7 @@ const KNOWN_LLM_PROVIDER_IDS = [
   "anthropic",
   "databricks",
   "databricks_v2",
+  "ollama",
   "openai",
   "openai-compat",
   "openrouter",
@@ -130,6 +131,11 @@ const PROVIDER_CREDENTIAL_CONFIG: Partial<
   "databricks-v2": {
     requiredEnvKeys: ["DATABRICKS_HOST"],
   },
+  ollama: {
+    // No secretEnvVar / apiKeyLabel: OLLAMA_HOST is a LAN address, not a
+    // secret credential (Ollama has no auth), same class as DATABRICKS_HOST.
+    requiredEnvKeys: ["OLLAMA_HOST"],
+  },
   openrouter: {
     requiredEnvKeys: ["OPENROUTER_API_KEY"],
     secretEnvVar: "OPENROUTER_API_KEY",
@@ -147,6 +153,7 @@ export const PERSONA_LLM_PROVIDER_OPTIONS: readonly PersonaModelOption[] = [
   { id: "openai", label: "OpenAI" },
   { id: "openai-compat", label: "OpenAI-compatible" },
   { id: "openrouter", label: "OpenRouter" },
+  { id: "ollama", label: "Ollama" },
   { id: "relay-mesh", label: "Buzz shared compute" },
   { id: "databricks", label: "Databricks" },
   { id: "databricks_v2", label: "Databricks v2" },
@@ -307,7 +314,8 @@ export function providerRequiresExplicitModel(
     trimmedProvider === "anthropic" ||
     trimmedProvider === "openai" ||
     trimmedProvider === "openai-compat" ||
-    trimmedProvider === "openrouter"
+    trimmedProvider === "openrouter" ||
+    trimmedProvider === "ollama"
   );
 }
 

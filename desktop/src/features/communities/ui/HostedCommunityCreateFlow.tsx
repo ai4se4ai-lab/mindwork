@@ -35,6 +35,36 @@ type HostedCommunityCreateFlowProps = {
   onComplete: () => void;
 };
 
+type FlowError = {
+  message: string;
+  /** `buzz://` deep link, when the failure is a desktop-only handoff. */
+  deepLink: string | null;
+};
+
+/**
+ * Duck-typed rather than `instanceof web/platform/adapter`'s
+ * `HandoffRequiredError`: this component is compiled by both the desktop app
+ * (real Tauri, never throws this) and user-web (browser shim), and only
+ * user-web's tsconfig has the `@web/*` alias that class lives behind.
+ */
+function toFlowError(cause: unknown): FlowError {
+  if (
+    cause instanceof Error &&
+    cause.name === "HandoffRequiredError" &&
+    "deepLink" in cause
+  ) {
+    const deepLink = (cause as { deepLink: unknown }).deepLink;
+    return {
+      message: cause.message,
+      deepLink: typeof deepLink === "string" ? deepLink : null,
+    };
+  }
+  return {
+    message: cause instanceof Error ? cause.message : String(cause),
+    deepLink: null,
+  };
+}
+
 export function HostedCommunityCreateFlow({
   onComplete,
 }: HostedCommunityCreateFlowProps) {
@@ -50,7 +80,7 @@ export function HostedCommunityCreateFlow({
   const [checkingName, setCheckingName] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [action, setAction] = React.useState<string | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<FlowError | null>(null);
   const loginAttempt = React.useRef(0);
   const signingIn = React.useRef(false);
 
@@ -69,8 +99,7 @@ export function HostedCommunityCreateFlow({
         if (nextAuth) await loadAccount();
       })
       .catch((cause) => {
-        if (active)
-          setError(cause instanceof Error ? cause.message : String(cause));
+        if (active) setError(toFlowError(cause));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -94,7 +123,7 @@ export function HostedCommunityCreateFlow({
     try {
       await operation();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(toFlowError(cause));
     } finally {
       setAction(null);
     }
@@ -113,7 +142,7 @@ export function HostedCommunityCreateFlow({
       })
       .catch((cause) => {
         if (loginAttempt.current !== attempt) return;
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(toFlowError(cause));
       })
       .finally(() => {
         if (loginAttempt.current === attempt) {
@@ -271,7 +300,18 @@ export function HostedCommunityCreateFlow({
       role="alert"
     >
       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-      <p className="text-sm leading-5 text-destructive">{error}</p>
+      <div className="space-y-2">
+        <p className="text-sm leading-5 text-destructive">{error.message}</p>
+        {error.deepLink ? (
+          <a
+            className="inline-flex items-center gap-1 text-sm font-medium text-destructive underline underline-offset-2 hover:no-underline"
+            href={error.deepLink}
+          >
+            Open in Buzz for desktop
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : null}
+      </div>
     </div>
   ) : null;
 

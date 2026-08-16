@@ -101,6 +101,14 @@ export class Nip07Signer implements NostrSigner {
     const tags = [
       ["u", url],
       ["method", method.toUpperCase()],
+      // Nonce ensures a unique event id even for identical requests in the
+      // same second — without it, two calls with the same method/url/body
+      // (e.g. a duplicate query from React StrictMode's double effect
+      // invocation) sign to the same NIP-98 event id and the relay's replay
+      // guard (crates/buzz-auth/src/nip98_replay.rs) rejects the second one.
+      // Mirrors desktop's `build_nip98_auth_header_for_keys`
+      // (desktop/src-tauri/src/relay.rs), which carries the same comment.
+      ["nonce", crypto.randomUUID()],
     ];
     if (body !== undefined) {
       tags.push(["payload", await sha256Hex(body)]);

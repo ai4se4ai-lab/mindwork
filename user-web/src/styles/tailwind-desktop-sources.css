@@ -1,0 +1,30 @@
+/**
+ * Extends Tailwind's utility-class generation to cover the reused desktop
+ * tree.
+ *
+ * Tailwind v4's automatic content detection scans from the current working
+ * directory the build runs in (per Tailwind's own docs: "Tailwind uses the
+ * current working directory as its starting point when scanning for class
+ * names by default"). For this dev server that's `user-web/` (`pnpm -C
+ * user-web exec vite ...`), so `desktop/src` — a sibling directory outside
+ * that scan root — is never scanned, even though `@/shared/styles/globals.css`
+ * (imported by `main.tsx` via the `@` alias) pulls in Tailwind itself. The
+ * result: every Tailwind utility class used in `desktop/src/**` (which is
+ * effectively all of them, since that's the entire reused feature tree)
+ * silently generates no CSS — components render structurally but completely
+ * unstyled.
+ *
+ * `desktop/src/shared/styles/globals.css` is desktop's own file (imported
+ * verbatim, not copied) and out of scope to edit here, so its base path can't
+ * be changed directly. Registering a second, independent Tailwind build
+ * rooted at `desktop/src` — using the same theme config via `@config`, so
+ * generated values (colors, spacing, custom `2xs`/`3xs` font sizes, etc.)
+ * match — is the supported workaround for exactly this monorepo shape (see
+ * "Setting your base path" in Tailwind's source-detection docs). The `@layer`
+ * boundaries this produces merge with the ones globals.css establishes: CSS
+ * cascade layers are matched by name across the whole document, not scoped
+ * per stylesheet, so this doesn't create a second, differently-ordered
+ * cascade — it just adds more rules to the same `utilities` bucket.
+ */
+@import "tailwindcss" source("../../../desktop/src");
+@config "../../../desktop/tailwind.config.js";

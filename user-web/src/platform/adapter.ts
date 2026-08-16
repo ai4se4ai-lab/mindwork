@@ -120,6 +120,8 @@ export interface Capabilities {
   readonly audioDevices: boolean;
   /** OS keychain / device pairing flows. */
   readonly devicePairing: boolean;
+  /** Builderlab OAuth (local callback server + system browser) for hosted communities (`*builderlab*`). */
+  readonly hostedCommunities: boolean;
   /** Whether a desktop install is reachable for handoff deep links. */
   readonly desktopHandoff: boolean;
 }
@@ -148,8 +150,10 @@ export class HandoffRequiredError extends Error {
     /** `buzz://` URL that performs the operation in the desktop app. */
     readonly deepLink: string | null,
     readonly capability: keyof Capabilities,
+    /** Feature label for the prompt, e.g. "Hosted communities". */
+    readonly feature: string,
   ) {
-    super(`"${command}" needs the Buzz desktop app.`);
+    super(`${feature} needs the Buzz desktop app.`);
     this.name = "HandoffRequiredError";
   }
 }

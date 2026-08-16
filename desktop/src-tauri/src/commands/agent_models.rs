@@ -122,6 +122,17 @@ pub async fn get_agent_models(
         return Ok(models);
     }
 
+    if let Some(models) = discover_ollama_models(
+        &state.http_client,
+        &effective_provider,
+        &merged_env,
+        persisted_model.clone(),
+    )
+    .await?
+    {
+        return Ok(models);
+    }
+
     if let Some(models) = discover_anthropic_models(
         &state.http_client,
         &effective_provider,
@@ -303,6 +314,12 @@ pub async fn discover_agent_models(
     }
 
     if let Some(models) =
+        discover_ollama_models(&state.http_client, &effective_provider, &merged_env, None).await?
+    {
+        return Ok(models);
+    }
+
+    if let Some(models) =
         discover_anthropic_models(&state.http_client, &effective_provider, &merged_env, None)
             .await?
     {
@@ -352,6 +369,16 @@ fn is_openai_compatible_provider(provider: Option<&str>) -> bool {
             .map(str::to_ascii_lowercase)
             .as_deref(),
         Some("openai" | "openai-compat")
+    )
+}
+
+fn is_ollama_provider(provider: Option<&str>) -> bool {
+    matches!(
+        provider
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("ollama")
     )
 }
 
@@ -535,6 +562,92 @@ async fn discover_openai_compatible_models(
     Ok(Some(AgentModelsResponse {
         agent_name: provider.as_deref().unwrap_or("openai").trim().to_string(),
         agent_version: "models-api".to_string(),
+        models,
+        agent_default_model: None,
+        selected_model,
+        supports_switching: true,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagsResponse {
+    #[serde(default)]
+    models: Vec<OllamaTagModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagModel {
+    name: String,
+    #[serde(default)]
+    modified_at: Option<String>,
+}
+
+/// `OLLAMA_HOST` is a LAN address, not a secret — unlike every other
+/// provider's discovery, no key redaction is applied to error bodies here.
+fn ollama_tags_url(host: &str) -> String {
+    format!(
+        "{}/api/tags",
+        buzz_agent_pkg::config::normalize_ollama_host(host)
+    )
+}
+
+fn normalize_ollama_models(response: OllamaTagsResponse) -> Vec<AgentModelInfo> {
+    let mut models = response.models;
+    // Newest-pulled first, mirroring the OpenAI list's `created`-descending sort.
+    models.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    let mut seen = HashSet::new();
+    models
+        .into_iter()
+        .filter(|item| seen.insert(item.name.clone()))
+        .map(|item| AgentModelInfo {
+            id: item.name.clone(),
+            name: Some(item.name),
+            description: None,
+        })
+        .collect()
+}
+
+async fn discover_ollama_models(
+    client: &reqwest::Client,
+    provider: &DiscoveryProvider,
+    env: &BTreeMap<String, String>,
+    selected_model: Option<String>,
+) -> Result<Option<AgentModelsResponse>, String> {
+    if !is_ollama_provider(provider.as_deref()) {
+        return Ok(None);
+    }
+
+    let host = match provider.required_env(env, "OLLAMA_HOST")? {
+        Some(host) => host,
+        None => return Ok(None),
+    };
+    let url = ollama_tags_url(&host);
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|error| format!("Ollama model discovery request failed: {error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Ollama model discovery HTTP {status}: {body}"));
+    }
+
+    let response = response
+        .json::<OllamaTagsResponse>()
+        .await
+        .map_err(|error| format!("Ollama model discovery response parse failed: {error}"))?;
+    let models = normalize_ollama_models(response);
+    if models.is_empty() {
+        return Err(
+            "Ollama model discovery returned no models — pull a model on the host first"
+                .to_string(),
+        );
+    }
+
+    Ok(Some(AgentModelsResponse {
+        agent_name: "ollama".to_string(),
+        agent_version: "api-tags".to_string(),
         models,
         agent_default_model: None,
         selected_model,

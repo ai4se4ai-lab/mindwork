@@ -482,6 +482,7 @@ fn buzz_agent_requirements(effective: &EffectiveAgentEnv) -> Vec<Requirement> {
         Some("anthropic") => Some("ANTHROPIC_MODEL"),
         Some("openai") | Some("openai-compat") => Some("OPENAI_COMPAT_MODEL"),
         Some("openrouter") => Some("OPENROUTER_MODEL"),
+        Some("ollama") => Some("OLLAMA_MODEL"),
         _ => None,
     };
     let model_present = effective
@@ -528,6 +529,13 @@ fn buzz_agent_requirements(effective: &EffectiveAgentEnv) -> Vec<Requirement> {
             if env_key_missing("OPENROUTER_API_KEY") => {
                 missing.push(Requirement::EnvKey {
                     key: "OPENROUTER_API_KEY".to_string(),
+                });
+            }
+        // OLLAMA_HOST is hard-required (no API key — Ollama has no auth).
+        Some("ollama")
+            if env_key_missing("OLLAMA_HOST") => {
+                missing.push(Requirement::EnvKey {
+                    key: "OLLAMA_HOST".to_string(),
                 });
             }
         _ => {
@@ -938,6 +946,44 @@ mod tests {
         assert!(result.requirements().contains(&Requirement::EnvKey {
             key: "DATABRICKS_HOST".to_string()
         }));
+    }
+
+    #[test]
+    fn buzz_agent_empty_string_ollama_host_is_not_ready() {
+        let env = make_env(
+            "buzz-agent",
+            env_with(&[
+                ("BUZZ_AGENT_PROVIDER", "ollama"),
+                ("BUZZ_AGENT_MODEL", "llama3.2:latest"),
+                ("OLLAMA_HOST", ""),
+            ]),
+        );
+        let result = agent_readiness(&env);
+        assert!(
+            !result.is_ready(),
+            "empty-string OLLAMA_HOST must be treated as missing"
+        );
+        assert!(result.requirements().contains(&Requirement::EnvKey {
+            key: "OLLAMA_HOST".to_string()
+        }));
+    }
+
+    #[test]
+    fn buzz_agent_ollama_ready_with_host_and_model() {
+        let env = make_env(
+            "buzz-agent",
+            env_with(&[
+                ("BUZZ_AGENT_PROVIDER", "ollama"),
+                ("BUZZ_AGENT_MODEL", "llama3.2:latest"),
+                ("OLLAMA_HOST", "192.168.1.50:11434"),
+            ]),
+        );
+        let result = agent_readiness(&env);
+        assert!(
+            result.is_ready(),
+            "ollama provider with host and model set must be ready; got {:?}",
+            result.requirements()
+        );
     }
 
     #[test]

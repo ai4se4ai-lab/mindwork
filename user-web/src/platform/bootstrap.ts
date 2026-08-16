@@ -11,6 +11,13 @@ import { Nip07Signer } from "@web/platform/signer";
 import { setAdapter } from "@web/platform/registry";
 import { WebAdapter } from "@web/platform/web-adapter";
 import { RELAY_COMMAND_HANDLERS } from "@web/platform/handlers/relay";
+import { INVITE_COMMAND_HANDLERS } from "@web/platform/handlers/invites";
+import { WORKSPACE_COMMAND_HANDLERS } from "@web/platform/handlers/workspace";
+import { DEEP_LINK_COMMAND_HANDLERS } from "@web/platform/handlers/deep-links";
+import { PROFILE_COMMAND_HANDLERS } from "@web/platform/handlers/profiles";
+import { CHANNEL_COMMAND_HANDLERS } from "@web/platform/handlers/channels";
+import { SYSTEM_COMMAND_HANDLERS } from "@web/platform/handlers/system";
+import { MESSAGE_COMMAND_HANDLERS } from "@web/platform/handlers/messages";
 
 export function installWebAdapter(relayUrl: string): WebAdapter {
   const signer = new Nip07Signer();
@@ -20,7 +27,16 @@ export function installWebAdapter(relayUrl: string): WebAdapter {
     relay,
     signer,
     capabilities: detectWebCapabilities(),
-    handlers: RELAY_COMMAND_HANDLERS,
+    handlers: {
+      ...RELAY_COMMAND_HANDLERS,
+      ...INVITE_COMMAND_HANDLERS,
+      ...WORKSPACE_COMMAND_HANDLERS,
+      ...DEEP_LINK_COMMAND_HANDLERS,
+      ...PROFILE_COMMAND_HANDLERS,
+      ...CHANNEL_COMMAND_HANDLERS,
+      ...SYSTEM_COMMAND_HANDLERS,
+      ...MESSAGE_COMMAND_HANDLERS,
+    },
   });
 
   setAdapter(adapter);

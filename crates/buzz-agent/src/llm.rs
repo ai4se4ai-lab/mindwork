@@ -106,7 +106,7 @@ impl Llm {
                     .await
                     .and_then(parse_openai_with_reasoning_details)
             }
-            Provider::OpenAi | Provider::Databricks => {
+            Provider::OpenAi | Provider::Databricks | Provider::Ollama => {
                 self.openai_request(cfg, effective_model, |use_responses, request_model| {
                     // Normalize effort for model-specific availability. Startup no longer rejects
                     // `max` for pure OpenAI/Databricks; this per-model table is the single authority
@@ -246,7 +246,7 @@ impl Llm {
                     let v = self.post_openrouter(cfg, &body).await?;
                     Ok(parse_openai(v)?.text)
                 }
-                Provider::OpenAi | Provider::Databricks => {
+                Provider::OpenAi | Provider::Databricks | Provider::Ollama => {
                     let r = self
                         .openai_request(cfg, effective_model, |use_responses, request_model| {
                             if use_responses {
@@ -2069,9 +2069,11 @@ pub(crate) fn databricks_pkce_config(host: &str) -> PkceOAuthConfig {
 ///   Otherwise a `PkceOAuthTokenSource` pointed at the workspace's OIDC
 ///   discovery URL. First request without a cached token triggers a browser
 ///   flow; subsequent requests use the cache + refresh transparently.
+/// - `Provider::Ollama`: a static source over an empty string — Ollama does
+///   not check the `Authorization` header.
 pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, AgentError> {
     match cfg.provider {
-        Provider::Anthropic | Provider::OpenAi | Provider::OpenRouter => {
+        Provider::Anthropic | Provider::OpenAi | Provider::OpenRouter | Provider::Ollama => {
             Ok(Arc::new(StaticTokenSource::new(cfg.api_key.clone())))
         }
         Provider::Databricks | Provider::DatabricksV2 => {
@@ -2097,9 +2099,11 @@ pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, A
 pub(crate) fn summary_completion_cap(provider: Provider, max_output_tokens: u32) -> u32 {
     match provider {
         Provider::OpenRouter => max_output_tokens.saturating_mul(2),
-        Provider::Anthropic | Provider::OpenAi | Provider::Databricks | Provider::DatabricksV2 => {
-            max_output_tokens
-        }
+        Provider::Anthropic
+        | Provider::OpenAi
+        | Provider::Databricks
+        | Provider::DatabricksV2
+        | Provider::Ollama => max_output_tokens,
     }
 }
 

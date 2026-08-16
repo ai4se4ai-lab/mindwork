@@ -25,6 +25,8 @@ function providerObjectLabel(provider: string): string {
       return "OpenAI";
     case "openai-compat":
       return "OpenAI-compatible";
+    case "ollama":
+      return "Ollama";
     default:
       return provider.trim() || "this provider";
   }
@@ -122,6 +124,13 @@ export function formatModelDiscoveryErrorStatus(
     message.includes("BUZZ_AGENT_PROVIDER is required")
   ) {
     return null;
+  }
+
+  if (message.includes("OLLAMA_HOST required")) {
+    return {
+      message: "Enter the Ollama host (IP or hostname) to load its models.",
+      tone: "muted",
+    };
   }
 
   // Databricks transparent auth (agent_models_databricks.rs). The backend

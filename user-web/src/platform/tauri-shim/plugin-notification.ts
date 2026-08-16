@@ -17,13 +17,28 @@ export async function sendNotification(options: {
   new Notification(options.title, { body: options.body, icon: options.icon });
 }
 
+/** Mirrors the real plugin's `Options` shape closely enough for
+ * `desktop/src/features/notifications/lib/desktop.ts`'s `notification.extra`
+ * read. */
+export interface NotificationActionPayload {
+  extra?: Record<string, unknown>;
+}
+
+/** Mirrors `@tauri-apps/api/core`'s `PluginListener` shape. */
+export interface PluginListener {
+  unregister(): Promise<void>;
+}
+
 /**
  * Desktop registers a handler for clicks on native notifications. The browser
  * delivers those through the `Notification` instance instead, so activation is
- * wired where the notification is created; this stays a no-op unsubscribe.
+ * wired where the notification is created; every call site in
+ * `listenForDesktopNotificationActions` gates this behind `isTauri()`, which
+ * this shim reports `false` for, so it is never actually invoked — this stays
+ * a no-op unregister.
  */
 export async function onAction(
-  _handler: (notification: unknown) => void,
-): Promise<() => void> {
-  return () => {};
+  _handler: (notification: NotificationActionPayload) => void,
+): Promise<PluginListener> {
+  return { unregister: async () => {} };
 }

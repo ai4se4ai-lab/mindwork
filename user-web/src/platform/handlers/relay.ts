@@ -11,6 +11,7 @@
  */
 import type { CommandHandler } from "@web/platform/adapter";
 import { httpToWs } from "@web/platform/relay-http";
+import { pubkeyToNpub } from "@/shared/lib/nostrUtils";
 
 const get_relay_http_url: CommandHandler<string> = (_args, ctx) =>
   ctx.relay.baseUrl;
@@ -40,15 +41,31 @@ const create_auth_event: CommandHandler<string> = async (args, ctx) => {
   return JSON.stringify(signed);
 };
 
-const get_identity: CommandHandler<{ pubkey: string } | null> = async (
-  _args,
-  ctx,
-) => {
-  try {
-    return { pubkey: await ctx.signer.getPublicKey() };
-  } catch {
-    return null;
-  }
+/** Mirrors desktop Rust's `truncated_display_name` in `commands/identity.rs`. */
+function truncatedDisplayName(npub: string): string {
+  return npub.length > 16 ? `${npub.slice(0, 10)}…${npub.slice(-4)}` : npub;
+}
+
+/**
+ * No try/catch: a missing or rejecting NIP-07 extension (`Nip07Unavailable`)
+ * is a genuine "not signed in" condition, and
+ * `desktop/src/shared/api/tauriIdentity.ts`'s `fromRawIdentity` expects either
+ * a well-formed `{ pubkey, display_name, ... }` object or a rejected promise —
+ * never `null`. This handler used to catch and return `null`, which crashed
+ * downstream inside `fromRawIdentity` (`raw.pubkey` on `null`) with a generic
+ * TypeError that masked the real cause for *any* failure, not just a missing
+ * extension. Letting the rejection propagate leaves `useIdentityQuery` in a
+ * clean `status: "error"` state, which `useMachineOnboardingState`
+ * (`desktop/src/features/onboarding/machineOnboarding.ts`) already handles —
+ * it resolves to stage `"ready"`, the same fallback desktop uses when its own
+ * (normally infallible) `get_identity` command errors.
+ */
+const get_identity: CommandHandler<{
+  pubkey: string;
+  display_name: string;
+}> = async (_args, ctx) => {
+  const pubkey = await ctx.signer.getPublicKey();
+  return { pubkey, display_name: truncatedDisplayName(pubkeyToNpub(pubkey)) };
 };
 
 const nip44_encrypt_to_self: CommandHandler<string> = (args, ctx) =>

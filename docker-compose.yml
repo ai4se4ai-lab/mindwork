@@ -127,7 +127,9 @@ services:
       keycloak-db-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      # KC_HEALTH_ENABLED moves health/metrics to a separate management port
+      # (9000) rather than serving them on the main 8080 port.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -135,7 +137,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024m
+          # 1024m was already bumped once before (see git history) and has
+          # now OOM-crashed mid-augmentation again, corrupting the Quarkus
+          # bootstrap cache in the container's writable layer and leaving it
+          # stuck restart-looping on a EOFException. The host has plenty of
+          # headroom (checked: 43Gi free) so give it more room.
+          memory: 2048m
     labels:
       com.buzz.service: "keycloak"
       com.buzz.env: "dev"

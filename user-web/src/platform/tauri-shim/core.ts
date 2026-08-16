@@ -35,8 +35,24 @@ export class Channel<T = unknown> implements AdapterChannel<T> {
   }
 }
 
-export function invoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
-  return getAdapter().invoke<T>(cmd, args);
+/**
+ * Real Tauri's `invoke` additionally accepts raw binary bodies
+ * (`number[] | ArrayBuffer | Uint8Array`) plus a third `InvokeOptions`
+ * argument (e.g. `{ headers }`) for the raw-IPC transfer desktop's
+ * `uploadMediaFile` (`shared/api/tauriMedia.ts`) uses to send file bytes
+ * without JSON-inflating them. Every command handler in this build reads
+ * `args` as a plain object, so raw-binary invokes aren't functionally
+ * supported yet — they fall through to `UnimplementedCommandError`, same as
+ * any other unported command — but the signature accepts the same shapes
+ * real Tauri does so call sites built against the real type typecheck
+ * unmodified.
+ */
+export function invoke<T>(
+  cmd: string,
+  args?: InvokeArgs | number[] | ArrayBuffer | Uint8Array,
+  _options?: { headers?: Record<string, string> },
+): Promise<T> {
+  return getAdapter().invoke<T>(cmd, args as InvokeArgs);
 }
 
 /**
@@ -47,4 +63,6 @@ export function convertFileSrc(filePath: string): string {
   return filePath;
 }
 
-export const isTauri = false;
+export function isTauri(): boolean {
+  return false;
+}

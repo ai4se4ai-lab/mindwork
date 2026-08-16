@@ -27,6 +27,26 @@ export class RelayHttpClient implements RelayHttp {
   readonly baseUrl: string;
   readonly wsUrl: string;
 
+  /**
+   * In-flight request coalescing, keyed by `method url body`.
+   *
+   * The relay's NIP-98 auth rejects a signed request that exactly repeats a
+   * prior one ("replay detected") — same method, URL, and body hash all sign
+   * to the same event id when built within the same wall-clock second. React
+   * 19 `StrictMode` (which `main.tsx` wraps the whole app in) intentionally
+   * double-invokes effects in dev, and more than one caller can legitimately
+   * want the identical `POST /query` at once (e.g. `useIdentityQuery` and
+   * `useCommunityInit` both resolving the profile right after boot) — on
+   * desktop these go through independent Tauri IPC calls signed by Rust and
+   * never collide; here they're browser `fetch` calls signed with the same
+   * NIP-98 machinery, so two genuinely-simultaneous identical calls really do
+   * produce a byte-identical auth event. Sharing one in-flight request for
+   * matching calls sidesteps the collision entirely rather than trying to
+   * out-race it, and is a strict improvement anyway (one relay round-trip
+   * instead of two for the same data).
+   */
+  private readonly inFlight = new Map<string, Promise<Response>>();
+
   constructor(
     baseUrl: string,
     private readonly signer: NostrSigner,
@@ -84,16 +104,32 @@ export class RelayHttpClient implements RelayHttp {
     const url = `${this.baseUrl}${path}`;
     const method = init.method ?? "GET";
     const body = typeof init.body === "string" ? init.body : undefined;
-    const authorization = await this.signer.httpAuthHeader(url, method, body);
+    const key = `${method} ${url} ${body ?? ""}`;
 
-    return fetch(url, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-        Authorization: authorization,
-      },
-    });
+    const existing = this.inFlight.get(key);
+    if (existing) {
+      // `Response` bodies are single-read streams — hand every caller its
+      // own independent clone of the shared result.
+      return (await existing).clone();
+    }
+
+    const request = (async () => {
+      const authorization = await this.signer.httpAuthHeader(url, method, body);
+      return fetch(url, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+          Authorization: authorization,
+        },
+      });
+    })();
+    this.inFlight.set(key, request);
+    try {
+      return (await request).clone();
+    } finally {
+      this.inFlight.delete(key);
+    }
   }
 
   fetchPublic(path: string, init: RequestInit = {}): Promise<Response> {

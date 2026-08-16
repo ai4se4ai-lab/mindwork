@@ -6,6 +6,7 @@ import {
   getPersonaModelOptions,
   getPersonaProviderOptions,
   getProviderApiKeyLabel,
+  providerRequiresExplicitModel,
   resetConfigForHarnessChange,
   runtimeSupportsLlmProviderSelection,
 } from "./agentConfigOptions.tsx";
@@ -25,6 +26,12 @@ function makeRuntime(id, availability = "available") {
 }
 
 // ── getPersonaProviderOptions — hideProviderIds ───────────────────────────────
+
+test("getPersonaProviderOptions includes ollama", () => {
+  const options = getPersonaProviderOptions("", "buzz-agent", "", new Set());
+  const ids = options.map((option) => option.id);
+  assert.ok(ids.includes("ollama"), "ollama present");
+});
 
 test("getPersonaProviderOptions returns databricks v1 and v2 when hideProviderIds is empty", () => {
   const options = getPersonaProviderOptions("", "buzz-agent", "", new Set());
@@ -286,8 +293,17 @@ test("getProviderApiKeyLabel_databricks_v2_returns_null", () => {
   assert.equal(getProviderApiKeyLabel("databricks_v2"), null);
 });
 
+test("getProviderApiKeyLabel_ollama_returns_null", () => {
+  // Ollama has no auth — OLLAMA_HOST is a plain required row, not a secret.
+  assert.equal(getProviderApiKeyLabel("ollama"), null);
+});
+
 test("getProviderApiKeyLabel_unknown_provider_returns_null", () => {
   assert.equal(getProviderApiKeyLabel("some-unknown-provider"), null);
+});
+
+test("providerRequiresExplicitModel_ollama_is_true", () => {
+  assert.equal(providerRequiresExplicitModel("ollama"), true);
 });
 
 test("getProviderApiKeyLabel_provider_id_trimmed_and_lowercased", () => {

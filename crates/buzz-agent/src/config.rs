@@ -761,6 +761,12 @@ pub enum Provider {
     DatabricksV2,
     /// OpenRouter multi-provider gateway. Routes to `{base_url}/chat/completions` with bearer auth. Wire format is OpenAI-chat-compatible.
     OpenRouter,
+    /// Self-hosted Ollama on a LAN machine. Routes to
+    /// `{base_url}/chat/completions` with no auth. Wire format is
+    /// OpenAI-chat-compatible — reuses the same body builder and parser.
+    /// `base_url` is derived from `OLLAMA_HOST` via [`normalize_ollama_host`],
+    /// which fills in a scheme and the default port `11434` when absent.
+    Ollama,
 }
 
 /// Which OpenAI-family HTTP API to call. Set via `OPENAI_COMPAT_API`
@@ -917,6 +923,20 @@ impl Config {
                 .ok_or_else(|| "config: OPENROUTER_MODEL required".to_string())?,
                 env_or("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
                 OpenAiApi::Chat, // OpenRouter uses Chat Completions only
+            ),
+            Provider::Ollama => (
+                // No credential — Ollama does not check the Authorization header.
+                String::new(),
+                resolve_model(buzz_agent_model.as_deref(), env("OLLAMA_MODEL").as_deref())
+                    .ok_or_else(|| "config: OLLAMA_MODEL required".to_string())?,
+                format!(
+                    "{}/v1",
+                    normalize_ollama_host(
+                        &env("OLLAMA_HOST")
+                            .ok_or_else(|| "config: OLLAMA_HOST required".to_string())?
+                    )
+                ),
+                OpenAiApi::Chat, // Ollama does not speak the Responses API
             ),
         };
         let system_prompt = match (env("BUZZ_AGENT_SYSTEM_PROMPT"), env("BUZZ_AGENT_SYSTEM_PROMPT_FILE")) {
@@ -1147,6 +1167,8 @@ fn resolve_provider(
                 "databricks_v2" | "databricks-v2" => Ok(Provider::DatabricksV2),
                 "openrouter" if present_nonempty(openrouter_key) => Ok(Provider::OpenRouter),
                 "openrouter" => Err("config: OPENROUTER_API_KEY required".into()),
+                // No key check — Ollama needs no credential.
+                "ollama" => Ok(Provider::Ollama),
                 _ => Err(format!(
                     "config: BUZZ_AGENT_PROVIDER={raw} not supported"
                 )),
@@ -1155,6 +1177,32 @@ fn resolve_provider(
         None => Err(
             "config: BUZZ_AGENT_PROVIDER is required — set it to your provider (e.g. anthropic, openai, databricks)".into(),
         ),
+    }
+}
+
+/// Normalize a user-typed Ollama host (`OLLAMA_HOST`) into `http://host:port`.
+///
+/// Accepts a bare IP/hostname (`192.168.1.50`), host with port
+/// (`192.168.1.50:11434`), or a full URL (`http://192.168.1.50:11434`).
+/// Prepends `http://` when no scheme is given (Ollama is plain HTTP on a
+/// LAN) and appends the default Ollama port `11434` when no port is given.
+/// Callers append the path they need (`/v1` for inference, `/api/tags` for
+/// discovery) — this returns the bare origin.
+pub fn normalize_ollama_host(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    let with_scheme = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{trimmed}")
+    };
+    let authority = with_scheme.split_once("://").map_or("", |(_, rest)| rest);
+    let has_port = authority
+        .rsplit_once(':')
+        .is_some_and(|(_, port)| !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()));
+    if has_port {
+        with_scheme
+    } else {
+        format!("{with_scheme}:11434")
     }
 }
 
@@ -1486,6 +1534,33 @@ mod tests {
     fn resolve_provider_unsupported_error_preserves_user_casing() {
         let err = resolve_provider(Some("OpenAIish"), None, None, None).unwrap_err();
         assert!(err.contains("BUZZ_AGENT_PROVIDER=OpenAIish"));
+    }
+
+    #[test]
+    fn resolve_provider_ollama_requires_no_credential() {
+        // Unlike anthropic/openai/openrouter, ollama needs no key at all.
+        assert_eq!(
+            resolve_provider(Some("ollama"), None, None, None).unwrap(),
+            Provider::Ollama
+        );
+    }
+
+    #[test]
+    fn normalize_ollama_host_fills_in_scheme_and_default_port() {
+        for (raw, want) in [
+            ("192.168.1.50", "http://192.168.1.50:11434"),
+            ("192.168.1.50:11434", "http://192.168.1.50:11434"),
+            ("192.168.1.50:8080", "http://192.168.1.50:8080"),
+            ("http://192.168.1.50:11434", "http://192.168.1.50:11434"),
+            ("http://192.168.1.50:11434/", "http://192.168.1.50:11434"),
+            (
+                "https://ollama.example.com",
+                "https://ollama.example.com:11434",
+            ),
+            ("localhost", "http://localhost:11434"),
+        ] {
+            assert_eq!(normalize_ollama_host(raw), want, "raw={raw:?}");
+        }
     }
 
     #[test]

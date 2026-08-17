@@ -20,7 +20,7 @@ export type ProjectsRepositoryScope =
   | "local"
   | "buzz"
   | "linked";
-export type ProjectsWorkItemScope = "all" | "mine";
+export type ProjectsWorkItemScope = "all" | "mine" | "assigned";
 export type ProjectsFilter =
   | "all"
   | "mine"
@@ -122,9 +122,13 @@ export function writeStoredRepositoryScope(scope: ProjectsRepositoryScope) {
   }
 }
 
-function readStoredWorkItemScope(key: string): ProjectsWorkItemScope {
+function readStoredWorkItemScope(
+  key: string,
+  allowed: ProjectsWorkItemScope[],
+): ProjectsWorkItemScope {
   try {
-    return globalThis.localStorage?.getItem(key) === "mine" ? "mine" : "all";
+    const value = globalThis.localStorage?.getItem(key);
+    return allowed.find((scope) => scope === value) ?? "all";
   } catch {
     return "all";
   }
@@ -139,7 +143,9 @@ function writeStoredWorkItemScope(key: string, scope: ProjectsWorkItemScope) {
 }
 
 export function readStoredPullRequestScope(): ProjectsWorkItemScope {
-  return readStoredWorkItemScope(PROJECTS_PULL_REQUEST_SCOPE_STORAGE_KEY);
+  return readStoredWorkItemScope(PROJECTS_PULL_REQUEST_SCOPE_STORAGE_KEY, [
+    "mine",
+  ]);
 }
 
 export function writeStoredPullRequestScope(scope: ProjectsWorkItemScope) {
@@ -147,7 +153,10 @@ export function writeStoredPullRequestScope(scope: ProjectsWorkItemScope) {
 }
 
 export function readStoredIssueScope(): ProjectsWorkItemScope {
-  return readStoredWorkItemScope(PROJECTS_ISSUE_SCOPE_STORAGE_KEY);
+  return readStoredWorkItemScope(PROJECTS_ISSUE_SCOPE_STORAGE_KEY, [
+    "mine",
+    "assigned",
+  ]);
 }
 
 export function writeStoredIssueScope(scope: ProjectsWorkItemScope) {

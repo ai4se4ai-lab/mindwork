@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   isProjectAccessibleToViewer,
+  isProjectOwnedByCurrentUser,
   isRepositoryAccessibleToViewer,
+  projectRepositoryRemovalMode,
   relativeTime,
 } from "./projectsViewHelpers.ts";
 
@@ -138,6 +140,57 @@ test("a project is accessible when any repository is, or when owned", () => {
     ),
     true,
   );
+});
+
+const HUMAN = "c".repeat(64);
+const AGENT_OWNER = "d".repeat(64);
+
+test("isProjectOwnedByCurrentUser recognizes the literal signer", () => {
+  const project = { owner: REPO_OWNER };
+  assert.equal(isProjectOwnedByCurrentUser(project, REPO_OWNER), true);
+  assert.equal(isProjectOwnedByCurrentUser(project, VIEWER), false);
+  assert.equal(isProjectOwnedByCurrentUser(project, undefined), false);
+});
+
+test("isProjectOwnedByCurrentUser recognizes the owner of the agent that published it", () => {
+  const project = { owner: REPO_OWNER };
+  const profiles = { [REPO_OWNER]: { ownerPubkey: AGENT_OWNER } };
+  assert.equal(
+    isProjectOwnedByCurrentUser(project, AGENT_OWNER, profiles),
+    true,
+  );
+  assert.equal(isProjectOwnedByCurrentUser(project, HUMAN, profiles), false);
+});
+
+test("isProjectOwnedByCurrentUser stays false without a matching profile", () => {
+  const project = { owner: REPO_OWNER };
+  assert.equal(isProjectOwnedByCurrentUser(project, AGENT_OWNER), false);
+  assert.equal(
+    isProjectOwnedByCurrentUser(project, AGENT_OWNER, {
+      [REPO_OWNER]: { ownerPubkey: null },
+    }),
+    false,
+  );
+});
+
+test("projectRepositoryRemovalMode returns direct for the literal signer", () => {
+  const project = { owner: REPO_OWNER };
+  assert.equal(projectRepositoryRemovalMode(project, REPO_OWNER), "direct");
+});
+
+test("projectRepositoryRemovalMode returns agent for the owner of an agent-signed project", () => {
+  const project = { owner: REPO_OWNER };
+  const profiles = { [REPO_OWNER]: { ownerPubkey: AGENT_OWNER } };
+  assert.equal(
+    projectRepositoryRemovalMode(project, AGENT_OWNER, profiles),
+    "agent",
+  );
+});
+
+test("projectRepositoryRemovalMode returns null with no permission", () => {
+  const project = { owner: REPO_OWNER };
+  assert.equal(projectRepositoryRemovalMode(project, HUMAN), null);
+  assert.equal(projectRepositoryRemovalMode(project, undefined), null);
 });
 
 test("relativeTime switches to an absolute date at seven days", () => {

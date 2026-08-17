@@ -4,6 +4,7 @@ import * as React from "react";
 import { relayClient } from "@/shared/api/relayClient";
 import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
 import { getCachedRelayOrigin } from "@/shared/lib/mediaUrl";
+import { useFocusedRefetchInterval } from "@/shared/lib/useDocumentVisible";
 import { signRelayEvent } from "@/shared/api/tauri";
 import { getIdentity } from "@/shared/api/tauriIdentity";
 import {
@@ -747,12 +748,16 @@ export function useProjectLocalRepoDiffQuery(
   });
 }
 
+/** Local-checkout snapshot for a project. Polls gently and refetches on
+ * focus so a repo cloned outside the app (an agent's shell tool, or a
+ * terminal) is picked up without requiring an app-triggered clone. */
 export function useProjectLocalRepoSnapshotQuery(
   project: Repository | null | undefined,
   reposDir?: string | null,
   branchName?: string | null,
 ) {
   const selectedBranch = branchName ?? project?.defaultBranch ?? null;
+  const refetchInterval = useFocusedRefetchInterval(15_000);
 
   return useQuery({
     enabled: Boolean(project),
@@ -768,15 +773,23 @@ export function useProjectLocalRepoSnapshotQuery(
       return fetchProjectLocalRepoSnapshot(project, reposDir, selectedBranch);
     },
     staleTime: 10_000,
+    refetchInterval,
     retry: 1,
   });
 }
 
+/** Directory listing of locally checked-out project repositories. Polls
+ * gently and refetches on focus so a repo cloned outside the app (an
+ * agent's shell tool, or a terminal) is picked up without requiring an
+ * app-triggered clone. */
 export function useProjectLocalRepositoriesQuery(reposDir?: string | null) {
+  const refetchInterval = useFocusedRefetchInterval(15_000);
+
   return useQuery({
     queryKey: ["projects", "local-repositories", reposDir ?? "default"],
     queryFn: () => listProjectLocalRepositories({ reposDir }),
     staleTime: 10_000,
+    refetchInterval,
     retry: 1,
   });
 }

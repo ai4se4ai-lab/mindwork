@@ -1,4 +1,10 @@
-import { FolderGit2, GitBranch, Globe, SquareTerminal } from "lucide-react";
+import {
+  FolderGit2,
+  GitBranch,
+  Globe,
+  SquareTerminal,
+  Trash2,
+} from "lucide-react";
 
 import type {
   Project,
@@ -49,7 +55,14 @@ type RepositoryItemProps = RepositoryListItem & {
   hasLocal: boolean;
   onOpen: (project: Project, repository: Repository) => void;
   onOpenTerminal: (repository: Repository) => void;
+  /** Removes `repository` from `project`'s member list — direct patch when
+   * the viewer signed the project, or an agent request when the viewer only
+   * owns the agent that did. Omitted (with `removalMode` unset) hides the
+   * action entirely. */
+  onRemove?: (project: Project, repository: Repository) => void;
   profiles?: UserProfileLookup;
+  removalMode?: "direct" | "agent" | null;
+  removeDisabled?: boolean;
   summary?: ProjectActivitySummary;
 };
 
@@ -176,8 +189,21 @@ function repositoryPeople(
 function RepositoryActionsMenu({
   hasLocal,
   onOpenTerminal,
+  onRemove,
+  project,
+  removalMode,
+  removeDisabled,
   repository,
-}: Pick<RepositoryItemProps, "hasLocal" | "onOpenTerminal" | "repository">) {
+}: Pick<
+  RepositoryItemProps,
+  | "hasLocal"
+  | "onOpenTerminal"
+  | "onRemove"
+  | "project"
+  | "removalMode"
+  | "removeDisabled"
+  | "repository"
+>) {
   return (
     <ProjectListRowMenu label={`More options for ${repository.name}`}>
       <DropdownMenuItem
@@ -190,6 +216,23 @@ function RepositoryActionsMenu({
         <SquareTerminal className="h-4 w-4" />
         {projectTerminalLabel(hasLocal)}
       </DropdownMenuItem>
+      {removalMode ? (
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          data-testid={`repository-remove-${repository.dtag}`}
+          disabled={removeDisabled}
+          onSelect={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove?.(project, repository);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          {removalMode === "agent"
+            ? "Ask an agent to remove from project"
+            : "Remove from project"}
+        </DropdownMenuItem>
+      ) : null}
     </ProjectListRowMenu>
   );
 }
@@ -199,8 +242,11 @@ export function RepositoryGridCard(props: RepositoryItemProps) {
     hasLocal,
     onOpen,
     onOpenTerminal,
+    onRemove,
     profiles,
     project,
+    removalMode,
+    removeDisabled,
     repository,
     summary,
   } = props;
@@ -226,6 +272,10 @@ export function RepositoryGridCard(props: RepositoryItemProps) {
             <RepositoryActionsMenu
               hasLocal={hasLocal}
               onOpenTerminal={onOpenTerminal}
+              onRemove={onRemove}
+              project={project}
+              removalMode={removalMode}
+              removeDisabled={removeDisabled}
               repository={repository}
             />
           </div>
@@ -257,8 +307,11 @@ export function RepositoryListRow(props: RepositoryItemProps) {
     hasLocal,
     onOpen,
     onOpenTerminal,
+    onRemove,
     profiles,
     project,
+    removalMode,
+    removeDisabled,
     repository,
     summary,
   } = props;
@@ -318,6 +371,10 @@ export function RepositoryListRow(props: RepositoryItemProps) {
           <RepositoryActionsMenu
             hasLocal={hasLocal}
             onOpenTerminal={onOpenTerminal}
+            onRemove={onRemove}
+            project={project}
+            removalMode={removalMode}
+            removeDisabled={removeDisabled}
             repository={repository}
           />
         </div>

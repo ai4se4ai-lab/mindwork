@@ -1,11 +1,4 @@
-import {
-  Check,
-  ChevronDown,
-  FolderPlus,
-  GitBranch,
-  Link,
-  Plus,
-} from "lucide-react";
+import { Bot, Check, ChevronDown, GitBranch, Link, Plus } from "lucide-react";
 
 import type { Project, Repository } from "@/features/projects/hooks";
 import { Button } from "@/shared/ui/button";
@@ -112,8 +105,8 @@ export function ProjectRepositoryPicker({
               data-testid="create-project-repository"
               onSelect={onCreate}
             >
-              <FolderPlus className="h-4 w-4" />
-              Create new repository
+              <Bot className="h-4 w-4" />
+              Ask an agent to create a repository
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="attach-project-repository"

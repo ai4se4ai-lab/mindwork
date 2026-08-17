@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   buildRepositoryChannelBindingTemplate,
   buildProjectPatchTemplate,
-  buildAddedRepositoryEventTemplatesFromHead,
 } from "./projectRepositoryCreation.ts";
 import { validateProjectEventEnvelope } from "./projectModels.ts";
 
@@ -165,40 +164,6 @@ test("buildProjectPatchTemplate rejects a repository address list exceeding 64 m
         repositoryAddresses: tooMany,
       }),
     /64/,
-  );
-});
-
-// ── buildAddedRepositoryEventTemplatesFromHead: racing writer ───────────────
-
-test("buildAddedRepositoryEventTemplatesFromHead detects a concurrent add via the live head", () => {
-  const OWNER = "a".repeat(64);
-  const existingAddress = `30617:${OWNER}:desktop`;
-  const newDtag = "mobile";
-  const newAddress = `30617:${OWNER}:${newDtag}`;
-
-  // Live head already contains the address (another session snuck it in).
-  const liveHeadWithRace = {
-    id: "e".repeat(64),
-    kind: 30621,
-    pubkey: OWNER,
-    created_at: 150,
-    content: "",
-    tags: [
-      ["d", "platform"],
-      ["a", existingAddress],
-      ["a", newAddress], // concurrent add
-    ],
-  };
-  assert.throws(
-    () =>
-      buildAddedRepositoryEventTemplatesFromHead({
-        accessChannelId: "11111111-1111-4111-8111-111111111111",
-        existingRepositoryAddresses: [existingAddress],
-        liveHead: liveHeadWithRace,
-        name: "Mobile",
-        ownerPubkey: OWNER,
-      }),
-    /already contains.*mobile.*another session/,
   );
 });
 

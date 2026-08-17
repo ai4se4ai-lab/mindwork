@@ -548,3 +548,40 @@ export function addRepositoryToProject(
       ) ?? [],
   };
 }
+
+/** Mirrors {@link addRepositoryToProject} for the detach path: drops
+ * `repository` from the project's member list and resolved repositories. */
+export function removeRepositoryFromProject(
+  project: Project,
+  repository: Repository,
+  createdAt: number,
+): Project {
+  const projectAddress = `${KIND_PROJECT_ANNOUNCEMENT}:${project.owner}:${project.dtag}`;
+  const repositoryAddresses = project.repositoryAddresses.filter(
+    (address) => address !== repository.repoAddress,
+  );
+  const repositories = project.repositories.filter(
+    (candidate) => candidate.repoAddress !== repository.repoAddress,
+  );
+
+  return {
+    ...project,
+    id: projectAddress,
+    createdAt,
+    legacy: false,
+    projectAddress,
+    primaryRepositoryAddress:
+      project.primaryRepositoryAddress === repository.repoAddress
+        ? (repositories.find((candidate) => candidate.dtag === project.dtag)
+            ?.repoAddress ??
+          repositories[0]?.repoAddress ??
+          null)
+        : project.primaryRepositoryAddress,
+    repositoryAddresses,
+    repositories,
+    unavailableRepositoryAddresses:
+      project.unavailableRepositoryAddresses?.filter(
+        (address) => address !== repository.repoAddress,
+      ) ?? [],
+  };
+}

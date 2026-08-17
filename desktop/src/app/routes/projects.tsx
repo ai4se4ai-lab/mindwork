@@ -11,13 +11,20 @@ const ProjectsScreen = React.lazy(async () => {
 
 export const Route = createFileRoute("/projects")({
   component: ProjectsRouteComponent,
+  validateSearch: (search: Record<string, unknown>) => ({
+    askAgentPrompt:
+      typeof search.askAgentPrompt === "string"
+        ? search.askAgentPrompt
+        : undefined,
+  }),
 });
 
 function ProjectsRouteComponent() {
   usePreviewFeatureWarning("projects");
+  const { askAgentPrompt } = Route.useSearch();
   return (
     <React.Suspense fallback={<ViewLoadingFallback kind="projects" />}>
-      <ProjectsScreen />
+      <ProjectsScreen askAgentPrompt={askAgentPrompt} />
     </React.Suspense>
   );
 }

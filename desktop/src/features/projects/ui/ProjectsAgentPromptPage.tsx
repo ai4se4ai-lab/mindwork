@@ -1,6 +1,7 @@
 import { EditorContent } from "@tiptap/react";
 import {
   ALargeSmall,
+  ArrowLeft,
   ChevronDown,
   Loader2,
   SendHorizontal,
@@ -263,15 +264,20 @@ function ConversationThread({
  * The conversation stays inline on this page — the prompt is delivered
  * through a DM with the agent under the hood, but no navigation happens. */
 export function ProjectsAgentPromptPage({
+  initialPrompt,
   projects,
   onClose,
   workspaceId,
 }: {
+  /** Pre-fills the composer, e.g. when routed here from a repository's
+   * "Ask an agent to create/remove a repository" action. Applied once, on
+   * mount — later prop changes don't overwrite what the user is typing. */
+  initialPrompt?: string;
   projects: readonly Project[];
   onClose: () => void;
   workspaceId: string | null;
 }) {
-  const [prompt, setPrompt] = React.useState("");
+  const [prompt, setPrompt] = React.useState(initialPrompt ?? "");
   const [storedConversation, setStoredConversation] =
     React.useState<StoredProjectsAgentConversation | null>(() =>
       readStoredProjectsAgentConversation(workspaceId),
@@ -355,6 +361,15 @@ export function ProjectsAgentPromptPage({
     const frame = window.requestAnimationFrame(richText.focusPreserve);
     return () => window.cancelAnimationFrame(frame);
   }, [richText.editor, richText.focusPreserve]);
+
+  const appliedInitialPromptRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!richText.editor || !initialPrompt || appliedInitialPromptRef.current)
+      return;
+    appliedInitialPromptRef.current = true;
+    richText.setContent(initialPrompt);
+    richText.focusEnd();
+  }, [initialPrompt, richText.editor, richText.setContent, richText.focusEnd]);
 
   const suggestions = React.useMemo(
     () => buildSuggestions(projects),
@@ -564,7 +579,18 @@ export function ProjectsAgentPromptPage({
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-4">
           <div className="w-full pb-6 pt-[calc(var(--buzz-channel-content-top-padding,5.75rem)_+_1rem)]">
-            <div className="mb-4 flex justify-end">
+            <div className="mb-4 flex items-center justify-between">
+              <Button
+                className="h-8 gap-1.5 rounded-full px-3 text-xs text-muted-foreground"
+                data-testid="projects-agent-prompt-back"
+                onClick={onClose}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to Projects
+              </Button>
               <Button
                 className="h-8 gap-1.5 rounded-full px-3 text-xs text-muted-foreground"
                 onClick={handleClearConversation}
@@ -596,6 +622,17 @@ export function ProjectsAgentPromptPage({
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto px-4">
       <div className="w-full max-w-xl space-y-6 py-10">
+        <Button
+          className="h-8 gap-1.5 rounded-full px-3 text-xs text-muted-foreground"
+          data-testid="projects-agent-prompt-back"
+          onClick={onClose}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Projects
+        </Button>
         <h2 className="text-center text-lg font-semibold text-foreground">
           Ask an agent about your projects
         </h2>

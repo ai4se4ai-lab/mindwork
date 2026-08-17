@@ -92,10 +92,11 @@ export function useAppNavigation() {
   );
 
   const goProjects = React.useCallback(
-    (behavior?: NavigationBehavior) =>
+    (behavior?: NavigationBehavior & { askAgentPrompt?: string }) =>
       commitNavigation(
         {
           to: "/projects",
+          search: { askAgentPrompt: behavior?.askAgentPrompt },
         },
         behavior,
       ),

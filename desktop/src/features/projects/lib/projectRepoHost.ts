@@ -1,4 +1,4 @@
-import { effectiveCloneUrls } from "./projectCloneUrl";
+import { effectiveCloneUrls, isBuzzCloneUrl } from "./projectCloneUrl";
 
 export type ProjectRepoHost =
   | { kind: "buzz" }
@@ -17,15 +17,10 @@ export function projectRepoHost(
   if (!cloneUrl || !relayOrigin) return { kind: "unresolved" };
 
   try {
-    const clone = new URL(cloneUrl);
-    const relay = new URL(relayOrigin);
-    const isBuzzPath = /^\/git\/[0-9a-f]{64}\/[^/]+\/?$/i.test(clone.pathname);
-
-    if (clone.origin === relay.origin && isBuzzPath) {
+    if (isBuzzCloneUrl(cloneUrl, relayOrigin)) {
       return { kind: "buzz" };
     }
-
-    return { kind: "external", host: clone.host };
+    return { kind: "external", host: new URL(cloneUrl).host };
   } catch {
     return { kind: "unresolved" };
   }

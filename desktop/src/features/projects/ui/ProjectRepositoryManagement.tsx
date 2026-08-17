@@ -2,9 +2,10 @@ import * as React from "react";
 import { Check, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import type { Project, Repository } from "@/features/projects/hooks";
-import { useAddProjectRepositoryMutation } from "@/features/projects/useAddProjectRepository";
+import { buildCreateRepoPrompt } from "@/features/projects/lib/projectAgentConversation";
 import { useAttachProjectRepositoryMutation } from "@/features/projects/useAttachProjectRepository";
 import { useBindProjectRepositoryChannelMutation } from "@/features/projects/useBindProjectRepositoryChannel";
 import { Button } from "@/shared/ui/button";
@@ -15,7 +16,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { AddProjectRepositoryDialog } from "./AddProjectRepositoryDialog";
 import { AttachProjectRepositoryDialog } from "./AttachProjectRepositoryDialog";
 import { ProjectRepositoryPicker } from "./ProjectRepositoryPicker";
 
@@ -32,10 +32,9 @@ export function ProjectRepositoryManagement({
   projects: Project[];
   repository: Repository;
 }) {
-  const [createOpen, setCreateOpen] = React.useState(false);
+  const { goProjects } = useAppNavigation();
   const [attachOpen, setAttachOpen] = React.useState(false);
   const channelsQuery = useChannelsQuery();
-  const createMutation = useAddProjectRepositoryMutation();
   const attachMutation = useAttachProjectRepositoryMutation();
   const repairMutation = useBindProjectRepositoryChannelMutation();
   const canEdit = identityPubkey?.toLowerCase() === project.owner.toLowerCase();
@@ -48,16 +47,6 @@ export function ProjectRepositoryManagement({
           channel.channelType !== "dm",
       ),
     [channelsQuery.data],
-  );
-  const inheritedChannelId = [
-    repository.channelId,
-    project.projectChannelId,
-    project.repositories.find(
-      (candidate) => candidate.id !== repository.id && candidate.channelId,
-    )?.channelId,
-  ].find(
-    (candidate) =>
-      candidate && accessChannels.some((channel) => channel.id === candidate),
   );
   const canManageAccess =
     accessChannels.length > 0 &&
@@ -79,19 +68,6 @@ export function ProjectRepositoryManagement({
 
   return (
     <>
-      <AddProjectRepositoryDialog
-        accessChannelId={inheritedChannelId ?? undefined}
-        channels={accessChannels}
-        isCreating={createMutation.isPending}
-        onAdd={async (input) => {
-          const result = await createMutation.mutateAsync(input);
-          onChange(result.repository.id);
-          toast.success(`Repository "${result.repository.name}" created.`);
-        }}
-        onOpenChange={setCreateOpen}
-        open={createOpen}
-        project={project}
-      />
       <AttachProjectRepositoryDialog
         isAttaching={attachMutation.isPending}
         onAttach={async (candidate) => {
@@ -110,7 +86,14 @@ export function ProjectRepositoryManagement({
       <ProjectRepositoryPicker
         onAttach={canEdit ? () => setAttachOpen(true) : undefined}
         onChange={onChange}
-        onCreate={canEdit ? () => setCreateOpen(true) : undefined}
+        onCreate={
+          canEdit
+            ? () =>
+                void goProjects({
+                  askAgentPrompt: buildCreateRepoPrompt(project),
+                })
+            : undefined
+        }
         project={project}
         repository={repository}
       />

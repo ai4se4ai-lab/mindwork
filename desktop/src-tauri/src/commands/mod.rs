@@ -47,6 +47,7 @@ mod personas;
 mod prevent_sleep;
 mod profile;
 mod project_git;
+mod project_git_branch_switch;
 mod project_git_branches;
 mod project_git_diff;
 mod project_git_exec;

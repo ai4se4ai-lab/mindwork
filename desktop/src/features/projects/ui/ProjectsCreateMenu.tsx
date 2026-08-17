@@ -1,4 +1,4 @@
-import { CircleDot, FolderGit2, GitPullRequest, Plus } from "lucide-react";
+import { Bot, CircleDot, FolderGit2, GitPullRequest, Plus } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -11,10 +11,14 @@ const MENU_ITEM_CLASS =
   "flex min-h-9 w-full items-center gap-2 rounded-lg py-2 pl-2 pr-4 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:text-foreground focus-visible:ring-1 focus-visible:ring-ring [&_svg]:size-4 [&_svg]:shrink-0";
 
 export function ProjectsCreateMenu({
+  onAskAgent,
   onCreateIssue,
   onCreateProject,
   onCreatePullRequest,
 }: {
+  /** Repositories are always published by an agent, never signed directly
+   * with the human's own key — this opens that request flow. */
+  onAskAgent: () => void;
   onCreateIssue: () => void;
   onCreateProject: () => void;
   onCreatePullRequest: () => void;
@@ -112,6 +116,16 @@ export function ProjectsCreateMenu({
             >
               <GitPullRequest />
               Pull Request
+            </button>
+            <button
+              className={MENU_ITEM_CLASS}
+              data-testid="projects-ask-agent"
+              onClick={() => select(onAskAgent)}
+              role="menuitem"
+              type="button"
+            >
+              <Bot />
+              Ask an agent to add a repository
             </button>
           </div>
         </div>

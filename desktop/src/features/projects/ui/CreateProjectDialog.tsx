@@ -184,7 +184,7 @@ export function CreateProjectDialog({
                   CREATE_FIELD_CONTROL_CLASS,
                 )}
                 data-testid="create-project-access-channel"
-                disabled={isCreating}
+                disabled={isCreating || accessChannels.length === 0}
                 id="create-project-access-channel"
                 onChange={(event) => {
                   setAccessChannelId(event.target.value);
@@ -201,9 +201,20 @@ export function CreateProjectDialog({
                 ))}
               </select>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Members of this channel can access project repositories.
-            </p>
+            {accessChannels.length === 0 ? (
+              <p
+                className="text-xs text-destructive"
+                data-testid="create-project-no-channels"
+              >
+                You need to be a member of at least one non-DM channel before
+                you can create a project. Join or create a channel first, then
+                come back here.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Members of this channel can access project repositories.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

@@ -1,3 +1,4 @@
+use super::project_git_branch_switch::{clone_repo_at_branch, ensure_worktree_on_branch};
 use super::project_git_exec::{
     build_git_auth_config, clean_branch, clean_target_ref, run_git, validate_workspace_clone_url,
     GitAuthConfig,
@@ -767,20 +768,7 @@ pub async fn get_project_repo_snapshot(
                 &auth,
             )?;
         } else {
-            let mut clone_args = vec!["clone", "--filter=blob:none"];
-            if let Some(ref branch) = branch {
-                clone_args.push("--branch");
-                clone_args.push(branch.as_str());
-            }
-            clone_args.push(clone_url.as_str());
-            clone_args.push(repo_path);
-            if run_git(&clone_args, None, &auth).is_err() && branch.is_some() {
-                run_git(
-                    &["clone", "--filter=blob:none", clone_url.as_str(), repo_path],
-                    None,
-                    &auth,
-                )?;
-            }
+            clone_repo_at_branch(clone_url.as_str(), repo_path, branch.as_deref(), &auth)?;
         }
 
         let snapshot =
@@ -810,6 +798,9 @@ pub async fn get_project_local_repo_snapshot(
         else {
             return Ok(None);
         };
+        if let Some(branch) = branch.as_deref() {
+            ensure_worktree_on_branch(&repo_dir, &auth, branch)?;
+        }
         let snapshot =
             snapshot_from_worktree(&repo_dir, &auth, branch.as_deref(), base_branch.as_deref());
         Ok(Some(ProjectLocalRepoSnapshotInfo {

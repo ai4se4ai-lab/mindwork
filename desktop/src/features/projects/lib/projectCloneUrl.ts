@@ -33,12 +33,40 @@ export function deriveRelayCloneUrl(
 }
 
 /**
+ * Whether `cloneUrl` points at this relay's own canonical git path
+ * (`<relay-origin>/git/<owner-pubkey>/<repo-id>`) — the same shape enforced
+ * by the Rust `validate_clone_url` gate. Shared by `projectRepoHost.ts` so
+ * both files agree on what counts as "this relay's own repo."
+ */
+export function isBuzzCloneUrl(
+  cloneUrl: string,
+  relayOrigin: string | null | undefined,
+): boolean {
+  if (!relayOrigin) return false;
+  try {
+    const clone = new URL(cloneUrl);
+    const relay = new URL(relayOrigin);
+    const isBuzzPath = /^\/git\/[0-9a-f]{64}\/[^/]+\/?$/i.test(clone.pathname);
+    return clone.origin === relay.origin && isBuzzPath;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns the effective clone URLs for a project: the explicitly advertised
- * ones when present, otherwise a single-element list holding the derived
- * relay-hosted default (or an empty list when no default can be derived).
+ * ones when present (reordered so a Buzz-relay-hosted URL sorts first, if
+ * one is present among several), otherwise a single-element list holding the
+ * derived relay-hosted default (or an empty list when no default can be
+ * derived).
  *
  * Explicit `clone` tags always win — NIP-34 permits pointing `clone` at an
- * external host (e.g. GitHub), which must not be overridden.
+ * external host (e.g. GitHub), which must not be overridden. But when a
+ * repo advertises *both* an external mirror and its own relay URL, every
+ * consumer in this codebase takes `effectiveCloneUrls(...)[0]` as "the"
+ * clone URL — so the relay-hosted one (the one this app can actually clone,
+ * branch-switch, and push to) must be the one that sorts first, regardless
+ * of publish order.
  */
 export function effectiveCloneUrls(
   cloneUrls: string[],
@@ -46,7 +74,15 @@ export function effectiveCloneUrls(
   owner: string,
   dtag: string,
 ): string[] {
-  if (cloneUrls.length > 0) return cloneUrls;
+  if (cloneUrls.length > 0) {
+    if (cloneUrls.length === 1) return cloneUrls;
+    const buzz = cloneUrls.filter((url) => isBuzzCloneUrl(url, relayOrigin));
+    if (buzz.length === 0 || buzz.length === cloneUrls.length) {
+      return cloneUrls;
+    }
+    const rest = cloneUrls.filter((url) => !isBuzzCloneUrl(url, relayOrigin));
+    return [...buzz, ...rest];
+  }
   const derived = deriveRelayCloneUrl(relayOrigin, owner, dtag);
   return derived ? [derived] : [];
 }

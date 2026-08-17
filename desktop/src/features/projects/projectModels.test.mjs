@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   addRepositoryToProject,
+  removeRepositoryFromProject,
   buildProjectReadModels,
   eventToExplicitProject,
   eventToRepository,
@@ -165,6 +166,84 @@ test("addRepositoryToProject promotes a legacy repository route to a project coo
   assert.equal(updated.id, `30621:${PROJECT_OWNER}:sprout`);
   assert.equal(updated.legacy, false);
   assert.equal(updated.repositories.length, 2);
+});
+
+test("removeRepositoryFromProject drops a non-primary member and keeps the rest", () => {
+  const frontendAddress = `30617:${PROJECT_OWNER}:frontend`;
+  const [project] = buildProjectReadModels({
+    projectEvents: [
+      projectEvent([
+        ["a", frontendAddress],
+        ["a", `30617:${PROJECT_OWNER}:backend`],
+      ]),
+    ],
+    repositoryEvents: [
+      repositoryEvent(PROJECT_OWNER, "frontend"),
+      repositoryEvent(PROJECT_OWNER, "backend"),
+    ],
+    relayOrigin: RELAY_ORIGIN,
+  });
+  const backend = project.repositories.find((repo) => repo.dtag === "backend");
+
+  const updated = removeRepositoryFromProject(project, backend, 300);
+
+  assert.equal(updated.repositories.length, 1);
+  assert.equal(updated.repositories[0].dtag, "frontend");
+  assert.equal(
+    updated.repositoryAddresses.includes(backend.repoAddress),
+    false,
+  );
+});
+
+test("removeRepositoryFromProject reassigns the primary address when the primary is removed", () => {
+  const [project] = buildProjectReadModels({
+    projectEvents: [
+      projectEvent([
+        ["a", `30617:${PROJECT_OWNER}:sprout`],
+        ["a", `30617:${PROJECT_OWNER}:mobile`],
+      ]),
+    ],
+    repositoryEvents: [
+      repositoryEvent(PROJECT_OWNER, "sprout"),
+      repositoryEvent(PROJECT_OWNER, "mobile"),
+    ],
+    relayOrigin: RELAY_ORIGIN,
+  });
+  const primary = project.repositories.find(
+    (repo) => repo.repoAddress === project.primaryRepositoryAddress,
+  );
+
+  const updated = removeRepositoryFromProject(project, primary, 300);
+
+  assert.notEqual(updated.primaryRepositoryAddress, primary.repoAddress);
+  assert.equal(updated.repositories.length, 1);
+});
+
+test("removeRepositoryFromProject can leave a project with zero repositories", () => {
+  const [legacyProject] = buildProjectReadModels({
+    projectEvents: [],
+    repositoryEvents: [repositoryEvent(PROJECT_OWNER, "sprout")],
+    relayOrigin: RELAY_ORIGIN,
+  });
+  const attachedRepository = eventToRepository(
+    repositoryEvent(PROJECT_OWNER, "mobile"),
+    RELAY_ORIGIN,
+  );
+  const withTwo = addRepositoryToProject(
+    legacyProject,
+    attachedRepository,
+    300,
+  );
+  const withOne = withTwo.repositories.find((repo) => repo.dtag === "sprout");
+  const emptied = removeRepositoryFromProject(withTwo, withOne, 400);
+  const stillEmptied = removeRepositoryFromProject(
+    emptied,
+    attachedRepository,
+    500,
+  );
+
+  assert.equal(stillEmptied.repositories.length, 0);
+  assert.equal(stillEmptied.primaryRepositoryAddress, null);
 });
 
 test("selectProjectRepository honors a request and falls back to primary", () => {

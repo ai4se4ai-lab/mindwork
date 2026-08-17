@@ -16,6 +16,7 @@ import {
 } from "@/features/projects/hooks";
 import { useRepositoryActivitySummariesQuery } from "@/features/projects/repositoryActivityHooks";
 import { useCreateProjectMutation } from "@/features/projects/useCreateProject";
+import { useRemoveRepositoryHandler } from "@/features/projects/useRemoveRepositoryHandler";
 import { selectProjectRepository } from "@/features/projects/projectModels";
 import { useProjectsRepoSnapshotsQuery } from "@/features/projects/useProjectsRepoSnapshots";
 import {
@@ -34,6 +35,7 @@ import {
   ProjectListRow,
 } from "@/features/projects/ui/ProjectCards";
 import { CreateProjectDialog } from "@/features/projects/ui/CreateProjectDialog";
+import { ProjectsAgentPromptPage } from "@/features/projects/ui/ProjectsAgentPromptPage";
 import { CreateProjectIssueDialog } from "@/features/projects/ui/CreateProjectIssueDialog";
 import { CreatePullRequestDialog } from "@/features/projects/ui/CreatePullRequestDialog";
 import { ProjectsCreateMenu } from "@/features/projects/ui/ProjectsCreateMenu";
@@ -61,6 +63,7 @@ import {
   projectHasAgent,
   projectOwnerIsUser,
   projectPeople,
+  projectRepositoryRemovalMode,
   type ProjectsFilter,
   type ProjectsRepositoryScope,
   type ProjectsSort,
@@ -92,9 +95,19 @@ import { PageHeader } from "@/shared/ui/PageHeader";
 
 const MANY_PROJECTS_THRESHOLD = 12;
 
-export function ProjectsView() {
-  const { goProject } = useAppNavigation();
+export function ProjectsView({
+  askAgentPrompt,
+}: {
+  /** Pre-fills and opens the "ask an agent" flow on mount, e.g. when routed
+   * here from a repository's "Ask an agent to create/remove a repository"
+   * action. */
+  askAgentPrompt?: string;
+} = {}) {
+  const { goProject, goProjects } = useAppNavigation();
   const { activeCommunity } = useCommunities();
+  const [agentPromptOpen, setAgentPromptOpen] = React.useState(
+    Boolean(askAgentPrompt),
+  );
   const relayOrigin = useRelayOrigin();
   const scrollIdleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -573,6 +586,12 @@ export function ProjectsView() {
     [deleteProjectMutation],
   );
 
+  const { handleRemoveRepository, removeDisabled } = useRemoveRepositoryHandler(
+    currentPubkey,
+    profiles,
+    goProjects,
+  );
+
   if (projectsQuery.isLoading) {
     return <ViewLoadingFallback kind="projects" />;
   }
@@ -589,6 +608,20 @@ export function ProjectsView() {
           Retry
         </Button>
       </div>
+    );
+  }
+
+  if (agentPromptOpen) {
+    return (
+      <ProjectsAgentPromptPage
+        initialPrompt={askAgentPrompt}
+        onClose={() => {
+          setAgentPromptOpen(false);
+          void goProjects({ replace: true });
+        }}
+        projects={projects}
+        workspaceId={activeCommunity?.id ?? null}
+      />
     );
   }
 
@@ -610,7 +643,11 @@ export function ProjectsView() {
           const summary = activitySummariesQuery.data?.[project.id];
           return (
             <ProjectGridCard
-              canDelete={isProjectOwnedByCurrentUser(project, currentPubkey)}
+              canDelete={isProjectOwnedByCurrentUser(
+                project,
+                currentPubkey,
+                profiles,
+              )}
               deleteDisabled={deleteProjectMutation.isPending}
               hasLocal={hasLocalCheckout(project, localRepoNames)}
               key={project.id}
@@ -637,7 +674,11 @@ export function ProjectsView() {
           const summary = activitySummariesQuery.data?.[project.id];
           return (
             <ProjectListRow
-              canDelete={isProjectOwnedByCurrentUser(project, currentPubkey)}
+              canDelete={isProjectOwnedByCurrentUser(
+                project,
+                currentPubkey,
+                profiles,
+              )}
               deleteDisabled={deleteProjectMutation.isPending}
               hasLocal={hasLocalCheckout(project, localRepoNames)}
               key={project.id}
@@ -668,8 +709,15 @@ export function ProjectsView() {
             key={repository.repoAddress}
             onOpen={handleOpenRepository}
             onOpenTerminal={handleOpenRepositoryTerminal}
+            onRemove={handleRemoveRepository}
             profiles={profiles}
             project={project}
+            removalMode={projectRepositoryRemovalMode(
+              project,
+              currentPubkey,
+              profiles,
+            )}
+            removeDisabled={removeDisabled}
             repository={repository}
             summary={
               repositoryActivitySummariesQuery.data?.[repository.repoAddress]
@@ -685,8 +733,15 @@ export function ProjectsView() {
             key={repository.repoAddress}
             onOpen={handleOpenRepository}
             onOpenTerminal={handleOpenRepositoryTerminal}
+            onRemove={handleRemoveRepository}
             profiles={profiles}
             project={project}
+            removalMode={projectRepositoryRemovalMode(
+              project,
+              currentPubkey,
+              profiles,
+            )}
+            removeDisabled={removeDisabled}
             repository={repository}
             summary={
               repositoryActivitySummariesQuery.data?.[repository.repoAddress]
@@ -749,6 +804,7 @@ export function ProjectsView() {
 
   const createMenu = (
     <ProjectsCreateMenu
+      onAskAgent={() => setAgentPromptOpen(true)}
       onCreateIssue={() => setCreateIssueOpen(true)}
       onCreateProject={() => setCreateProjectOpen(true)}
       onCreatePullRequest={() => setCreatePullRequestOpen(true)}

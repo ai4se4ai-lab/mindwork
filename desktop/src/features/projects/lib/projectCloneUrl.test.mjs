@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { deriveRelayCloneUrl, effectiveCloneUrls } from "./projectCloneUrl.ts";
+import {
+  deriveRelayCloneUrl,
+  effectiveCloneUrls,
+  isBuzzCloneUrl,
+} from "./projectCloneUrl.ts";
 import {
   projectRepoHost,
   projectRepoHostForProject,
@@ -64,6 +68,72 @@ test("effectiveCloneUrls derives a default when none is advertised", () => {
 
 test("effectiveCloneUrls returns empty when no default can be derived", () => {
   assert.deepEqual(effectiveCloneUrls([], null, OWNER, "repo"), []);
+});
+
+test("effectiveCloneUrls sorts a Buzz-hosted URL first when listed after an external mirror", () => {
+  const buzzUrl = `${ORIGIN}/git/${OWNER}/flappy-bee`;
+  const external = "https://github.com/octocat/flappy-bee";
+  assert.deepEqual(
+    effectiveCloneUrls([external, buzzUrl], ORIGIN, OWNER, "flappy-bee"),
+    [buzzUrl, external],
+  );
+});
+
+test("effectiveCloneUrls sorts a Buzz-hosted URL first even when listed third", () => {
+  const buzzUrl = `${ORIGIN}/git/${OWNER}/flappy-bee`;
+  const mirrorA = "https://github.com/octocat/flappy-bee";
+  const mirrorB = "https://gitlab.com/octocat/flappy-bee";
+  assert.deepEqual(
+    effectiveCloneUrls(
+      [mirrorA, mirrorB, buzzUrl],
+      ORIGIN,
+      OWNER,
+      "flappy-bee",
+    ),
+    [buzzUrl, mirrorA, mirrorB],
+  );
+});
+
+test("effectiveCloneUrls preserves order when no URL is Buzz-hosted", () => {
+  const mirrorA = "https://github.com/octocat/flappy-bee";
+  const mirrorB = "https://gitlab.com/octocat/flappy-bee";
+  assert.deepEqual(
+    effectiveCloneUrls([mirrorA, mirrorB], ORIGIN, OWNER, "flappy-bee"),
+    [mirrorA, mirrorB],
+  );
+});
+
+test("effectiveCloneUrls preserves order when every URL is Buzz-hosted", () => {
+  const buzzA = `${ORIGIN}/git/${OWNER}/flappy-bee`;
+  const buzzB = `${ORIGIN}/git/${OWNER}/flappy-bee/`;
+  assert.deepEqual(
+    effectiveCloneUrls([buzzA, buzzB], ORIGIN, OWNER, "flappy-bee"),
+    [buzzA, buzzB],
+  );
+});
+
+test("effectiveCloneUrls leaves a single explicit URL untouched", () => {
+  const external = ["https://github.com/octocat/flappy-bee"];
+  assert.deepEqual(
+    effectiveCloneUrls(external, ORIGIN, OWNER, "flappy-bee"),
+    external,
+  );
+});
+
+test("isBuzzCloneUrl recognizes this relay's canonical git path", () => {
+  assert.equal(isBuzzCloneUrl(`${ORIGIN}/git/${OWNER}/buzz`, ORIGIN), true);
+});
+
+test("isBuzzCloneUrl rejects an external host", () => {
+  assert.equal(
+    isBuzzCloneUrl("https://github.com/block/buzz.git", ORIGIN),
+    false,
+  );
+});
+
+test("isBuzzCloneUrl fails closed on an unresolved origin or malformed URL", () => {
+  assert.equal(isBuzzCloneUrl(`${ORIGIN}/git/${OWNER}/buzz`, null), false);
+  assert.equal(isBuzzCloneUrl("not a URL", ORIGIN), false);
 });
 
 test("projectRepoHost recognizes a canonical repository on the relay", () => {

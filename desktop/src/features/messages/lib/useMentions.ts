@@ -22,7 +22,6 @@ import {
   getMentionableAgentPubkeys,
   getSharedChannelIds,
   isAgentMentionChannelType,
-  rememberSelectedAgentPubkeys,
   shouldHideAgentFromMentions,
   uniqueAutocompleteLabels,
 } from "@/features/agents/lib/agentAutocompleteEligibility";
@@ -48,15 +47,17 @@ import { extractMentionPubkeys } from "./extractMentionPubkeys";
 import { useDraftMentionRouting } from "./useDraftMentionRouting";
 import { rankMentionCandidates } from "./mentionRanking";
 import { mapMentionCandidateToSuggestion } from "./mentionSuggestionMapping";
+import { useRepoMentionSuggestions } from "./useRepoMentionSuggestions";
 import {
   appendUniqueName,
   buildTeamMentionCandidates,
   formatSearchUserDisplayName,
   formatSearchUserSecondaryLabel,
-  formatTeamMention,
   globalSearchIdentityKey,
   type MentionCandidate,
   mentionCandidateLabel,
+  mentionInsertTextForRepo,
+  recordIdentityMentionSelection,
 } from "./mentionCandidates";
 const MENTION_DEBOUNCE_MS = 120;
 const MENTION_SUGGESTION_LIMIT = 50;
@@ -560,24 +561,27 @@ export function useMentions(
     }
   }, [userSearchQuery]);
 
+  // Repos are matched/ranked separately from the identity pipeline above.
+  const matchingRepoSuggestions = useRepoMentionSuggestions(
+    mentionQuery,
+    mentionSearchQuery,
+  );
+
   const suggestions = React.useMemo<MentionSuggestion[]>(() => {
     if (mentionQuery === null) {
       return [];
     }
-
-    if (matchingSuggestions.length > 0) {
-      return matchingSuggestions;
-    }
-
-    if (userSearchQuery.isFetching) {
-      return filterCachedAgentSuggestions(
-        previousSuggestionsRef.current,
-        mentionCandidatesWithTeams,
-      );
-    }
-
-    return [];
+    const identityMatches = matchingSuggestions.length
+      ? matchingSuggestions
+      : userSearchQuery.isFetching
+        ? filterCachedAgentSuggestions(
+            previousSuggestionsRef.current,
+            mentionCandidatesWithTeams,
+          )
+        : [];
+    return [...identityMatches, ...matchingRepoSuggestions];
   }, [
+    matchingRepoSuggestions,
     matchingSuggestions,
     mentionCandidatesWithTeams,
     mentionQuery,
@@ -612,61 +616,21 @@ export function useMentions(
         debounceTimerRef.current = null;
       }
 
-      const displayName = suggestion.displayName;
-      const teamMembers =
-        suggestion.kind === "team" ? suggestion.teamMembers : null;
-      const insertText = teamMembers
-        ? formatTeamMention(displayName, teamMembers)
-        : `@${displayName} `;
-
-      const mentions = mentionMapRef.current;
-      const personaMentions = personaMentionMapRef.current;
-      const selectedMentions = teamMembers ?? [suggestion];
-      for (const selected of selectedMentions) {
-        if (selected.kind === "persona" && selected.personaId) {
-          personaMentions.set(selected.displayName, selected.personaId);
-          mentions.delete(selected.displayName);
-        } else if (selected.pubkey) {
-          mentions.set(selected.displayName, selected.pubkey);
-          personaMentions.delete(selected.displayName);
-        }
-      }
-      setSelectedMentionNames((current) => {
-        const known = new Set(current.map((name) => name.toLowerCase()));
-        return [
-          ...current,
-          ...selectedMentions
-            .map((selected) => selected.displayName)
-            .filter((name) => !known.has(name.toLowerCase())),
-        ];
-      });
-      const isAgentMention =
-        suggestion.kind === "persona" ||
-        suggestion.kind === "team" ||
-        suggestion.isAgent === true ||
-        (suggestion.pubkey
-          ? knownAgentPubkeys.has(normalizePubkey(suggestion.pubkey))
-          : false);
-      rememberSelectedAgentPubkeys(
-        selectedAgentMentionPubkeysRef.current,
-        selectedMentions,
-        isAgentMention,
-      );
-      if (isAgentMention) {
-        setSelectedAgentMentionNames((current) => {
-          const known = new Set(current.map((name) => name.toLowerCase()));
-          const next = [
-            ...current,
-            ...selectedMentions
-              .map((selected) => selected.displayName)
-              .filter((name) => !known.has(name.toLowerCase())),
-          ];
-          selectedAgentMentionNamesRef.current = next;
-          return next;
-        });
-      }
-      trimMapToSize(mentions, 200);
-      trimMapToSize(personaMentions, 200);
+      // A repo isn't a pubkey to notify — skip the mention-map/agent-notify
+      // bookkeeping (no `p` tag) and insert its entity link instead.
+      const insertText =
+        suggestion.kind === "repo"
+          ? mentionInsertTextForRepo(suggestion)
+          : recordIdentityMentionSelection(suggestion, {
+              mentionMap: mentionMapRef.current,
+              personaMentionMap: personaMentionMapRef.current,
+              knownAgentPubkeys,
+              selectedAgentMentionPubkeys:
+                selectedAgentMentionPubkeysRef.current,
+              setSelectedMentionNames,
+              setSelectedAgentMentionNames,
+              selectedAgentMentionNamesRef,
+            });
       setMentionQuery(null);
       setMentionSelectedIndex(0);
 

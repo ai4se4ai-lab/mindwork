@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Bot, Users } from "lucide-react";
+import { Bot, FolderGit2, Users } from "lucide-react";
 import type { TeamMentionMember } from "@/features/messages/lib/mentionCandidates";
 
 import { Badge } from "@/shared/ui/badge";
@@ -18,13 +18,20 @@ export type MentionSuggestion = {
   personaId?: string;
   teamId?: string;
   teamMembers?: TeamMentionMember[];
-  kind?: "identity" | "persona" | "team";
+  kind?: "identity" | "persona" | "team" | "repo";
   displayName: string;
   avatarUrl?: string | null;
   isAgent?: boolean;
   notInChannel?: boolean;
   ownerLabel?: string | null;
   role?: string | null;
+  /** `kind: "repo"` only — the repo's owner pubkey and `d` tag, used to
+   * build the inserted `buzz://repo?...` entity link. */
+  repoOwner?: string;
+  repoDtag?: string;
+  /** `kind: "repo"` only — e.g. "owner/repo" or "github.com/org/repo",
+   * shown as the secondary line instead of the agent/role badges. */
+  repoPathLabel?: string | null;
 };
 
 type MentionAutocompleteProps = {
@@ -99,6 +106,9 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
             suggestion.pubkey ??
             (suggestion.personaId ? `persona-${suggestion.personaId}` : null) ??
             (suggestion.teamId ? `team-${suggestion.teamId}` : null) ??
+            (suggestion.kind === "repo" && suggestion.repoOwner
+              ? `repo-${suggestion.repoOwner}-${suggestion.repoDtag}`
+              : null) ??
             suggestion.displayName;
           const agentLabel = "agent";
           const hasNameCollision =
@@ -129,6 +139,10 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Users aria-hidden="true" className="h-4 w-4" />
                 </span>
+              ) : suggestion.kind === "repo" ? (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <FolderGit2 aria-hidden="true" className="h-4 w-4" />
+                </span>
               ) : (
                 <UserAvatar
                   avatarUrl={suggestion.avatarUrl ?? null}
@@ -144,11 +158,25 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                 >
                   {suggestion.displayName}
                 </span>
-                {suggestion.kind === "team" ||
-                suggestion.isAgent ||
-                suggestion.role ||
-                suggestion.ownerLabel ||
-                suggestion.notInChannel ? (
+                {suggestion.kind === "repo" ? (
+                  suggestion.repoPathLabel ? (
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-2xs leading-none",
+                        index === selectedIndex
+                          ? "text-accent-foreground/60"
+                          : "text-muted-foreground",
+                      )}
+                      title={suggestion.repoPathLabel}
+                    >
+                      {suggestion.repoPathLabel}
+                    </span>
+                  ) : null
+                ) : suggestion.kind === "team" ||
+                  suggestion.isAgent ||
+                  suggestion.role ||
+                  suggestion.ownerLabel ||
+                  suggestion.notInChannel ? (
                   <span
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 text-2xs leading-none",

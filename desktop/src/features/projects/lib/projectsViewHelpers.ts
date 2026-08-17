@@ -6,7 +6,10 @@ import type {
 import { hasLocalRepositoryCheckout } from "@/features/projects/lib/projectLocalRepos";
 import { projectRepoHostForRepository } from "@/features/projects/lib/projectRepoHost";
 import { selectProjectRepository } from "@/features/projects/projectModels";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  ownsAuthorAgent,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 export type ProjectsViewMode = "grid" | "list";
@@ -356,13 +359,60 @@ export function isProjectMine(
   );
 }
 
+/**
+ * Whether the current user may delete `project` — either they are its
+ * literal signer, or the project was published by an agent they own (NIP-OA
+ * owner-of-agent). Mirrors the relay's own authz for kind:5 a-tag deletions
+ * (`validate_standard_deletion_event`, which accepts either the addressable
+ * event's author or `is_agent_owner(author, actor)`), and the same
+ * owner-of-agent pattern already used for messages
+ * (`canManageMessageForCurrentUser`). `profiles` is optional so callers that
+ * haven't loaded profiles yet still get the literal-owner check.
+ */
 export function isProjectOwnedByCurrentUser(
   project: Project,
   currentPubkey: string | undefined,
+  profiles?: UserProfileLookup,
 ) {
-  return currentPubkey
-    ? normalizePubkey(project.owner) === normalizePubkey(currentPubkey)
-    : false;
+  if (!currentPubkey) return false;
+  if (normalizePubkey(project.owner) === normalizePubkey(currentPubkey)) {
+    return true;
+  }
+  return ownsAuthorAgent(
+    profiles?.[normalizePubkey(project.owner)],
+    currentPubkey,
+  );
+}
+
+/**
+ * How the current user may remove a single repository from a project's
+ * member list, distinct from deleting the whole project:
+ * - `"direct"` — the user is the project's literal signer and can re-sign a
+ *   patched `kind:30621` themselves.
+ * - `"agent"` — the project was published by an agent the user owns
+ *   (NIP-OA). The user can't produce that signature, so removal has to be
+ *   requested from the agent instead (same reasoning as publishing).
+ * - `null` — no permission.
+ *
+ * A replaceable event (`kind:30621`) can only be re-signed by its original
+ * signer — unlike a `kind:5` deletion, owner-of-agent authorization doesn't
+ * let a human directly edit an agent-signed event.
+ */
+export function projectRepositoryRemovalMode(
+  project: Project,
+  currentPubkey: string | undefined,
+  profiles?: UserProfileLookup,
+): "direct" | "agent" | null {
+  if (!currentPubkey) return null;
+  if (normalizePubkey(project.owner) === normalizePubkey(currentPubkey)) {
+    return "direct";
+  }
+  return ownsAuthorAgent(
+    profiles?.[normalizePubkey(project.owner)],
+    currentPubkey,
+  )
+    ? "agent"
+    : null;
 }
 
 export type RepositoryAccessInput = {

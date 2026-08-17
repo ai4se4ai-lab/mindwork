@@ -54,3 +54,26 @@ export function visibleConversationMessages<
     )
     .sort((left, right) => left.created_at - right.created_at);
 }
+
+/**
+ * Templated request sent to an agent to publish a new repository into a
+ * project. Repositories are always published by an agent — never signed
+ * directly with the human's own key — so this is the only "create a
+ * repository" affordance in a project that already exists.
+ */
+export function buildCreateRepoPrompt(project: { name: string }): string {
+  return `Please create and publish a new repository for the "${project.name}" project.`;
+}
+
+/**
+ * Templated request sent to an agent to remove a repository from a project
+ * it published. Only the agent that signed the project's `kind:30621`
+ * membership list can re-sign an edited version of it — a human can't
+ * produce that signature themselves, even when they own the agent.
+ */
+export function buildRemoveRepoPrompt(
+  project: { name: string },
+  repository: { name: string },
+): string {
+  return `Please remove the "${repository.name}" repository from the "${project.name}" project.`;
+}

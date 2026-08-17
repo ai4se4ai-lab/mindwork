@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
 import {
+  buildCreateRepoPrompt,
+  buildRemoveRepoPrompt,
   restoreProjectsAgentConversation,
   visibleConversationMessages,
 } from "./projectAgentConversation.ts";
@@ -144,4 +146,21 @@ test("storage round-trips prompt-anchored pointers and clears them", () => {
 
   clearStoredProjectsAgentConversation(WORKSPACE_ID);
   assert.equal(readStoredProjectsAgentConversation(WORKSPACE_ID), null);
+});
+
+test("buildCreateRepoPrompt asks an agent to publish a repo, naming the project", () => {
+  assert.equal(
+    buildCreateRepoPrompt({ name: "bee-garden-game" }),
+    'Please create and publish a new repository for the "bee-garden-game" project.',
+  );
+});
+
+test("buildRemoveRepoPrompt asks an agent to remove a repo, naming both project and repo", () => {
+  assert.equal(
+    buildRemoveRepoPrompt(
+      { name: "bee-garden-game" },
+      { name: "bee-garden-client" },
+    ),
+    'Please remove the "bee-garden-client" repository from the "bee-garden-game" project.',
+  );
 });

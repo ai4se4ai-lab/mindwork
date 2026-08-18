@@ -124,13 +124,8 @@ pub async fn open_project_terminal(
         build_git_auth_config(&state)
     };
     tauri::async_runtime::spawn_blocking(move || {
-        // An inaccessible repos root (fresh machine, nothing cloned yet) is
-        // not fatal here — the clone path below creates the default root. A
-        // misconfigured explicit reposDir still errors in clone_destination_root.
         let local_dir =
-            find_local_repo_dir(repos_dir.as_deref(), &project_dtag, clone_url.as_deref())
-                .ok()
-                .flatten();
+            find_local_repo_dir(repos_dir.as_deref(), &project_dtag, clone_url.as_deref())?;
         if let Some(repo_dir) = local_dir {
             launch_terminal_at(&repo_dir)?;
             return Ok(ProjectTerminalResult {
@@ -185,9 +180,7 @@ pub async fn open_project_merge_recovery_terminal(
             input.repos_dir.as_deref(),
             &input.project_dtag,
             Some(&input.target_clone_url),
-        )
-        .ok()
-        .flatten();
+        )?;
         let (repo_dir, cloned) = if let Some(repo_dir) = existing_dir {
             (repo_dir, false)
         } else {

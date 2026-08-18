@@ -249,7 +249,7 @@ export function ProjectsView({
     enabled: projectPubkeys.length > 0,
   });
   const profiles = profilesQuery.data?.profiles;
-  const deleteProjectMutation = useDeleteProjectMutation();
+  const deleteProjectMutation = useDeleteProjectMutation(profiles);
   const currentPubkey = identityQuery.data?.pubkey;
 
   const handleViewModeChange = React.useCallback(

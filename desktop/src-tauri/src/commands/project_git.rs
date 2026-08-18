@@ -35,11 +35,23 @@ pub struct ProjectRepoContributorInfo {
     pub last_commit_at: i64,
 }
 #[derive(Serialize)]
+pub struct ProjectRepoBranchRefInfo {
+    pub name: String,
+    pub commit: String,
+}
+#[derive(Serialize)]
 pub struct ProjectRepoSnapshotInfo {
     pub latest_commit: Option<ProjectRepoCommitInfo>,
     pub commits: Vec<ProjectRepoCommitInfo>,
     pub files: Vec<ProjectRepoFileInfo>,
     pub contributors: Vec<ProjectRepoContributorInfo>,
+    /// Every branch that exists on the remote right now, read from the
+    /// snapshot's own clone rather than the relay's NIP-34 repo-state event.
+    /// The repo-state event is only published when a push goes through the
+    /// relay's git server, so a repository with branches the indexer hasn't
+    /// (yet) seen — or that predate the project being added to Buzz — would
+    /// otherwise never appear in the branch switcher.
+    pub branches: Vec<ProjectRepoBranchRefInfo>,
 }
 #[derive(Serialize)]
 pub struct ProjectLocalRepoSnapshotInfo {
@@ -344,6 +356,46 @@ fn parse_ls_tree(
         .collect()
 }
 
+/// Branches (name + tip commit) present on `origin` in a repo already
+/// cloned into `repo_dir`. A plain `git clone` (no `--single-branch`)
+/// fetches every remote head into `refs/remotes/origin/*` regardless of
+/// which branch it checks out, so this reads directly off that ref
+/// namespace instead of making another network round trip.
+fn remote_tracking_branches(
+    repo_dir: &std::path::Path,
+    auth: &GitAuthConfig,
+) -> Vec<ProjectRepoBranchRefInfo> {
+    run_git(
+        &[
+            "for-each-ref",
+            "--format=%(objectname)%09%(refname:short)",
+            "refs/remotes/origin/",
+        ],
+        Some(repo_dir),
+        auth,
+    )
+    .map(|output| {
+        output
+            .lines()
+            .filter_map(|line| {
+                let (commit, name) = line.split_once('\t')?;
+                let name = name.strip_prefix("origin/")?;
+                // `origin/HEAD` is a symbolic ref to the default branch, not
+                // a branch of its own.
+                if name == "HEAD" {
+                    return None;
+                }
+                let name = clean_branch(Some(name.to_string()))?;
+                Some(ProjectRepoBranchRefInfo {
+                    name,
+                    commit: commit.trim().to_ascii_lowercase(),
+                })
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 fn snapshot_from_repo(
     repo_dir: &std::path::Path,
     auth: &GitAuthConfig,
@@ -411,6 +463,7 @@ fn snapshot_from_repo(
         commits,
         files,
         contributors,
+        branches: remote_tracking_branches(repo_dir, auth),
     }
 }
 
@@ -486,6 +539,7 @@ fn snapshot_from_worktree(
         commits,
         files,
         contributors,
+        branches: remote_tracking_branches(repo_dir, auth),
     }
 }
 
@@ -976,4 +1030,153 @@ pub async fn pull_project_local_repository(
     })
     .await
     .map_err(|error| format!("repo pull task failed: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{remote_tracking_branches, snapshot_from_repo, GitAuthConfig};
+    use crate::commands::project_git_exec::{build_test_git_auth_config, run_git};
+
+    fn commit(repo_dir: &std::path::Path, auth: &GitAuthConfig, file: &str, content: &str) {
+        std::fs::write(repo_dir.join(file), content).expect("write fixture file");
+        run_git(&["add", file], Some(repo_dir), auth).expect("stage fixture file");
+        run_git(
+            &[
+                "-c",
+                "user.name=Buzz Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                &format!("commit {file}"),
+            ],
+            Some(repo_dir),
+            auth,
+        )
+        .expect("commit fixture file");
+    }
+
+    /// A bare `origin` remote carrying `main` (default) and two other
+    /// branches, plus a plain clone of it (no `--single-branch`) — mirrors
+    /// what `get_project_repo_snapshot` produces before building a snapshot.
+    fn clone_of_remote_with_three_branches() -> (tempfile::TempDir, std::path::PathBuf) {
+        let auth = build_test_git_auth_config().expect("build test git config");
+        let root = tempfile::tempdir().expect("create test directory");
+        let remote = root.path().join("remote.git");
+        let seed = root.path().join("seed");
+
+        run_git(
+            &["init", "--bare", "--", remote.to_str().unwrap()],
+            None,
+            &auth,
+        )
+        .expect("init remote");
+        run_git(&["init", "--", seed.to_str().unwrap()], None, &auth).expect("init seed checkout");
+        run_git(
+            &["symbolic-ref", "HEAD", "refs/heads/main"],
+            Some(&seed),
+            &auth,
+        )
+        .expect("set default branch");
+        commit(&seed, &auth, "README.md", "main content\n");
+        for branch in ["feature-a", "feature-b"] {
+            run_git(&["checkout", "-b", branch, "main"], Some(&seed), &auth)
+                .expect("create branch");
+            commit(&seed, &auth, &format!("{branch}.md"), "content\n");
+        }
+        run_git(
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+            Some(&seed),
+            &auth,
+        )
+        .expect("add remote");
+        run_git(
+            &["push", "origin", "main", "feature-a", "feature-b"],
+            Some(&seed),
+            &auth,
+        )
+        .expect("push all branches");
+        run_git(
+            &[
+                format!("--git-dir={}", remote.to_str().unwrap()).as_str(),
+                "symbolic-ref",
+                "HEAD",
+                "refs/heads/main",
+            ],
+            None,
+            &auth,
+        )
+        .expect("set remote HEAD");
+
+        let clone_dir = root.path().join("clone");
+        run_git(
+            &[
+                "clone",
+                "--filter=blob:none",
+                remote.to_str().unwrap(),
+                clone_dir.to_str().unwrap(),
+            ],
+            None,
+            &auth,
+        )
+        .expect("clone remote");
+
+        (root, clone_dir)
+    }
+
+    #[test]
+    fn remote_tracking_branches_lists_every_branch_and_excludes_origin_head() {
+        let auth = build_test_git_auth_config().expect("build test git config");
+        let (_root, clone_dir) = clone_of_remote_with_three_branches();
+
+        let mut names = remote_tracking_branches(&clone_dir, &auth)
+            .into_iter()
+            .map(|branch| branch.name)
+            .collect::<Vec<_>>();
+        names.sort();
+
+        assert_eq!(names, vec!["feature-a", "feature-b", "main"]);
+    }
+
+    #[test]
+    fn remote_tracking_branches_reports_each_branchs_own_tip_commit() {
+        let auth = build_test_git_auth_config().expect("build test git config");
+        let (_root, clone_dir) = clone_of_remote_with_three_branches();
+
+        let branches = remote_tracking_branches(&clone_dir, &auth);
+        let main = branches
+            .iter()
+            .find(|branch| branch.name == "main")
+            .expect("main branch present");
+        let feature_a = branches
+            .iter()
+            .find(|branch| branch.name == "feature-a")
+            .expect("feature-a branch present");
+
+        assert_eq!(main.commit.len(), 40);
+        assert_ne!(
+            main.commit, feature_a.commit,
+            "branches with diverging history must report distinct tip commits"
+        );
+    }
+
+    #[test]
+    fn snapshot_from_repo_includes_branches_not_just_the_checked_out_one() {
+        // Regression test: the branch switcher must not be limited to
+        // whatever branch happened to be checked out (or to a relay-side
+        // repo-state event that may not have observed every branch yet) —
+        // it should reflect every branch that actually exists on the remote.
+        let auth = build_test_git_auth_config().expect("build test git config");
+        let (_root, clone_dir) = clone_of_remote_with_three_branches();
+
+        let snapshot = snapshot_from_repo(&clone_dir, &auth, Some("main"), None);
+        let mut names = snapshot
+            .branches
+            .into_iter()
+            .map(|branch| branch.name)
+            .collect::<Vec<_>>();
+        names.sort();
+
+        assert_eq!(names, vec!["feature-a", "feature-b", "main"]);
+    }
 }

@@ -71,6 +71,8 @@ import {
   fetchProjectEventsExhaustively,
 } from "./projectEnumeration";
 import { projectMatchesRouteId } from "./projectRoutes";
+import { isProjectOwnedByCurrentUser } from "./lib/projectsViewHelpers";
+import type { UserProfileLookup } from "@/features/profile/lib/identity";
 
 export type {
   Project,
@@ -617,9 +619,18 @@ async function fetchProjectActivitySummaries(
   );
 }
 
-async function deleteProject(project: Project): Promise<void> {
+async function deleteProject(
+  project: Project,
+  profiles: UserProfileLookup | undefined,
+): Promise<void> {
   const identity = await getIdentity();
-  if (identity.pubkey.toLowerCase() !== project.owner.toLowerCase()) {
+  // Mirrors the relay's own authz for kind:5 a-tag deletions
+  // (`validate_standard_deletion_event`, which accepts either the
+  // addressable event's author or `is_agent_owner(author, actor)`) — see
+  // `isProjectOwnedByCurrentUser`. A literal-signer-only check here rejects
+  // deletions from a human who owns the agent that published the project,
+  // even though the relay itself would honor that deletion.
+  if (!isProjectOwnedByCurrentUser(project, identity.pubkey, profiles)) {
     throw new Error("Only the project owner can delete this project.");
   }
 
@@ -952,11 +963,11 @@ export function useProjectActivitySummariesQuery(projects: Project[]) {
   });
 }
 
-export function useDeleteProjectMutation() {
+export function useDeleteProjectMutation(profiles?: UserProfileLookup) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: deleteProject,
+    mutationFn: (project: Project) => deleteProject(project, profiles),
     onSuccess: (_data, project) => {
       queryClient.setQueryData<Project[]>(projectsQueryKey, (current = []) =>
         current.filter((item) => item.id !== project.id),

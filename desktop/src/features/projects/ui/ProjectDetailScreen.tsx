@@ -259,6 +259,17 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
     activeTag,
     repoRemote.host.kind === "buzz",
   );
+  // The snapshot's own clone sees every branch that exists on the remote
+  // right now, not just the ones the relay's repo-state indexer has
+  // observed. Feed newly discovered branches into the same "remembered"
+  // bucket used for branches this session just created, so they show up in
+  // the switcher (and survive re-selection) without waiting on that index.
+  const snapshotBranches = repoSnapshotQuery.data?.branches;
+  React.useEffect(() => {
+    for (const branch of snapshotBranches ?? []) {
+      rememberBranch(branch);
+    }
+  }, [snapshotBranches, rememberBranch]);
   const repoDiffQuery = useProjectRepoDiffQuery(
     repository,
     activeBranch,

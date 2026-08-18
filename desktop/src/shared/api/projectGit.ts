@@ -49,11 +49,17 @@ type RawProjectRepoContributor = {
   last_commit_at: number;
 };
 
+type RawProjectRepoSnapshotBranch = {
+  name: string;
+  commit: string;
+};
+
 type RawProjectRepoSnapshot = {
   latest_commit: RawProjectRepoCommit | null;
   commits?: RawProjectRepoCommit[];
   files: RawProjectRepoFile[];
   contributors?: RawProjectRepoContributor[];
+  branches?: RawProjectRepoSnapshotBranch[];
 };
 
 type RawProjectLocalRepoSnapshot = {
@@ -144,6 +150,7 @@ function fromRawProjectRepoSnapshot(
       commitCount: contributor.commit_count,
       lastCommitAt: contributor.last_commit_at,
     })),
+    branches: snapshot.branches ?? [],
   };
 }
 

@@ -121,7 +121,15 @@ pub(crate) fn find_local_repo_dir(
     project_dtag: &str,
     clone_url: Option<&str>,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    let repos_roots = canonical_repos_roots(repos_dir)?;
+    // An inaccessible repos root (nothing has ever been cloned there yet, or
+    // the default `~/.buzz/REPOS` hasn't been created) simply means there is
+    // no local checkout to find — not a fatal error. Every caller already
+    // treats `None` as "not cloned", so surface that instead of propagating
+    // `canonicalize()`'s "no such file or directory" as a hard failure.
+    let repos_roots = match canonical_repos_roots(repos_dir) {
+        Ok(roots) => roots,
+        Err(_) => return Ok(None),
+    };
 
     for repos_root in repos_roots {
         for candidate in local_repo_candidates(project_dtag, clone_url) {
@@ -189,4 +197,49 @@ pub(crate) fn canonical_repos_roots(
         return Err("reposDir is not accessible".to_string());
     }
     Ok(roots)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_local_repo_dir;
+
+    /// A fresh machine (or a community whose configured `reposDir` was never
+    /// created) has no repos root on disk yet. Looking up whether a project
+    /// is already cloned there must report "not cloned" (`Ok(None)`), not
+    /// bubble `canonicalize()`'s "no such file or directory" as a hard
+    /// error — otherwise every caller (clone, sync status, terminal, diff)
+    /// fails outright before the clone path ever gets a chance to create
+    /// the directory.
+    #[test]
+    fn find_local_repo_dir_is_not_cloned_when_repos_root_does_not_exist() {
+        let root = tempfile::tempdir().expect("create test directory");
+        let missing_repos_dir = root.path().join("never-created");
+
+        let result = find_local_repo_dir(
+            Some(missing_repos_dir.to_str().expect("repos dir path")),
+            "my-project",
+            None,
+        );
+
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn find_local_repo_dir_finds_an_existing_checkout() {
+        let root = tempfile::tempdir().expect("create test directory");
+        let repo_dir = root.path().join("my-project");
+        std::fs::create_dir_all(repo_dir.join(".git")).expect("create fake checkout");
+
+        let result = find_local_repo_dir(
+            Some(root.path().to_str().expect("repos dir path")),
+            "my-project",
+            None,
+        )
+        .expect("lookup succeeds");
+
+        assert_eq!(
+            result.expect("checkout found").canonicalize().ok(),
+            repo_dir.canonicalize().ok(),
+        );
+    }
 }

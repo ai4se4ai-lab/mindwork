@@ -23,11 +23,20 @@ export type ProjectRepoContributor = {
   lastCommitAt: number;
 };
 
+export type ProjectRepoSnapshotBranch = {
+  name: string;
+  commit: string;
+};
+
 export type ProjectRepoSnapshot = {
   latestCommit: ProjectRepoCommit | null;
   commits: ProjectRepoCommit[];
   files: ProjectRepoFile[];
   contributors: ProjectRepoContributor[];
+  /** Every branch that exists on the remote right now, read directly from
+   * the snapshot's own clone rather than a possibly-stale relay repo-state
+   * event. */
+  branches: ProjectRepoSnapshotBranch[];
 };
 
 export type ProjectRepoDiffFile = {
